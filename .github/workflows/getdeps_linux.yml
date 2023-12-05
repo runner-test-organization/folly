@@ -5,92 +5,60 @@ name: linux
 on:
   push:
     branches:
-    - main
     - build-test
-  pull_request:
-    branches:
-    - main
 
 jobs:
   build:
-    runs-on: ubicloud
+    strategy:
+      matrix:
+        runs-on: [
+          ubuntu-latest,
+          ubicloud-standard-2-ubuntu-2204, ubicloud-standard-4-ubuntu-2204, ubicloud-standard-2-ubuntu-2204-arm, ubicloud-standard-4-ubuntu-2204-arm,
+          buildjet-2vcpu-ubuntu-2204, buildjet-4vcpu-ubuntu-2204, buildjet-2vcpu-ubuntu-2204-arm, buildjet-4vcpu-ubuntu-2204-arm,
+          namespace-profile-x64-2x8, namespace-profile-x64-4x16, namespace-profile-arm64-2x8, namespace-profile-arm64-4x16,
+          warp-ubuntu-latest-x64-2x, warp-ubuntu-latest-x64-4x, warp-ubuntu-latest-arm64-2x, warp-ubuntu-latest-arm64-4x,
+          warp-ubuntu-x64-2x, warp-ubuntu-x64-4x, warp-ubuntu-arm64-2x, warp-ubuntu-arm64-4x
+        ]
+    name: ${{matrix.runs-on}}
+    runs-on: ${{matrix.runs-on}}
+    continue-on-error: true
     steps:
-    - uses: actions/checkout@v2
-    - name: Fetch boost
-      run: python3 build/fbcode_builder/getdeps.py fetch --no-tests boost
-    - name: Fetch ninja
-      run: python3 build/fbcode_builder/getdeps.py fetch --no-tests ninja
-    - name: Fetch cmake
-      run: python3 build/fbcode_builder/getdeps.py fetch --no-tests cmake
-    - name: Fetch double-conversion
-      run: python3 build/fbcode_builder/getdeps.py fetch --no-tests double-conversion
-    - name: Fetch fmt
-      run: python3 build/fbcode_builder/getdeps.py fetch --no-tests fmt
-    - name: Fetch gflags
-      run: python3 build/fbcode_builder/getdeps.py fetch --no-tests gflags
-    - name: Fetch glog
-      run: python3 build/fbcode_builder/getdeps.py fetch --no-tests glog
-    - name: Fetch googletest
-      run: python3 build/fbcode_builder/getdeps.py fetch --no-tests googletest
-    - name: Fetch libevent
-      run: python3 build/fbcode_builder/getdeps.py fetch --no-tests libevent
-    - name: Fetch lz4
-      run: python3 build/fbcode_builder/getdeps.py fetch --no-tests lz4
-    - name: Fetch snappy
-      run: python3 build/fbcode_builder/getdeps.py fetch --no-tests snappy
-    - name: Fetch zstd
-      run: python3 build/fbcode_builder/getdeps.py fetch --no-tests zstd
-    - name: Fetch autoconf
-      run: python3 build/fbcode_builder/getdeps.py fetch --no-tests autoconf
-    - name: Fetch automake
-      run: python3 build/fbcode_builder/getdeps.py fetch --no-tests automake
-    - name: Fetch libtool
-      run: python3 build/fbcode_builder/getdeps.py fetch --no-tests libtool
-    - name: Fetch libsodium
-      run: python3 build/fbcode_builder/getdeps.py fetch --no-tests libsodium
-    - name: Fetch xz
-      run: python3 build/fbcode_builder/getdeps.py fetch --no-tests xz
-    - name: Build boost
-      run: python3 build/fbcode_builder/getdeps.py build --no-tests boost
-    - name: Build ninja
-      run: python3 build/fbcode_builder/getdeps.py build --no-tests ninja
-    - name: Build cmake
-      run: python3 build/fbcode_builder/getdeps.py build --no-tests cmake
-    - name: Build double-conversion
-      run: python3 build/fbcode_builder/getdeps.py build --no-tests double-conversion
-    - name: Build fmt
-      run: python3 build/fbcode_builder/getdeps.py build --no-tests fmt
-    - name: Build gflags
-      run: python3 build/fbcode_builder/getdeps.py build --no-tests gflags
-    - name: Build glog
-      run: python3 build/fbcode_builder/getdeps.py build --no-tests glog
-    - name: Build googletest
-      run: python3 build/fbcode_builder/getdeps.py build --no-tests googletest
-    - name: Build libevent
-      run: python3 build/fbcode_builder/getdeps.py build --no-tests libevent
-    - name: Build lz4
-      run: python3 build/fbcode_builder/getdeps.py build --no-tests lz4
-    - name: Build snappy
-      run: python3 build/fbcode_builder/getdeps.py build --no-tests snappy
-    - name: Build zstd
-      run: python3 build/fbcode_builder/getdeps.py build --no-tests zstd
-    - name: Build autoconf
-      run: python3 build/fbcode_builder/getdeps.py build --no-tests autoconf
-    - name: Build automake
-      run: python3 build/fbcode_builder/getdeps.py build --no-tests automake
-    - name: Build libtool
-      run: python3 build/fbcode_builder/getdeps.py build --no-tests libtool
-    - name: Build libsodium
-      run: python3 build/fbcode_builder/getdeps.py build --no-tests libsodium
-    - name: Build xz
-      run: python3 build/fbcode_builder/getdeps.py build --no-tests xz
-    - name: Build folly
-      run: python3 build/fbcode_builder/getdeps.py build --src-dir=. folly  --project-install-prefix folly:/usr/local
-    - name: Copy artifacts
-      run: python3 build/fbcode_builder/getdeps.py fixup-dyn-deps --strip --src-dir=. folly _artifacts/linux  --project-install-prefix folly:/usr/local --final-install-prefix /usr/local
-    - uses: actions/upload-artifact@v2
-      with:
-        name: folly
-        path: _artifacts
-    - name: Test folly
-      run: python3 build/fbcode_builder/getdeps.py test --src-dir=. folly  --project-install-prefix folly:/usr/local
+    - name: cat /proc/cpuinfo
+      run: cat /proc/cpuinfo
+
+    - name: uname -mr
+      run: uname -mr
+
+    - name: nproc
+      run: nproc
+
+    - name: lscpu
+      run: lscpu
+
+    - name: free -h
+      run: free -h
+
+    - name: lsblk
+      run: lsblk
+
+    - name: df -Th
+      run: df -Th
+      
+    - name: lspci
+      continue-on-error: true
+      run: lspci -vv
+
+    - name: list installed
+      run: |
+        sudo apt list --installed
+
+    - name: install fio
+      run: |
+        sudo apt-get update
+        sudo apt-get -y install fio
+
+    - name: run fio
+      run: |
+        sudo fio --filename=./f --size=2GB --direct=1 --rw=randrw --bs=4k --ioengine=libaio \
+          --iodepth=256 --runtime=30 --numjobs=4 --time_based --group_reporting \
+          --name=iops-test-job --eta-newline=1
