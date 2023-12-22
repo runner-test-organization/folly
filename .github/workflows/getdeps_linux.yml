@@ -13,11 +13,10 @@ jobs:
       matrix:
         runs-on: [
           ubuntu-latest,
-          ubicloud-standard-2-ubuntu-2204, ubicloud-standard-4-ubuntu-2204, ubicloud-standard-2-ubuntu-2204-arm, ubicloud-standard-4-ubuntu-2204-arm,
-          buildjet-2vcpu-ubuntu-2204, buildjet-4vcpu-ubuntu-2204, buildjet-2vcpu-ubuntu-2204-arm, buildjet-4vcpu-ubuntu-2204-arm,
-          namespace-profile-x64-2x8, namespace-profile-x64-4x16, namespace-profile-arm64-2x8, namespace-profile-arm64-4x16,
-          warp-ubuntu-latest-x64-2x, warp-ubuntu-latest-x64-4x, warp-ubuntu-latest-arm64-2x, warp-ubuntu-latest-arm64-4x,
-          warp-ubuntu-x64-2x, warp-ubuntu-x64-4x, warp-ubuntu-arm64-2x, warp-ubuntu-arm64-4x
+          # ubicloud-standard-2-ubuntu-2204, ubicloud-standard-4-ubuntu-2204, ubicloud-standard-2-ubuntu-2204-arm, ubicloud-standard-4-ubuntu-2204-arm,
+          # buildjet-2vcpu-ubuntu-2204, buildjet-4vcpu-ubuntu-2204, buildjet-2vcpu-ubuntu-2204-arm, buildjet-4vcpu-ubuntu-2204-arm,
+          # namespace-profile-x64-2x8, namespace-profile-x64-4x16, namespace-profile-arm64-2x8, namespace-profile-arm64-4x16,
+          warp-ubuntu-latest-x64-2x, warp-ubuntu-latest-x64-4x, warp-ubuntu-latest-arm64-2x, warp-ubuntu-latest-arm64-4x
         ]
     name: ${{matrix.runs-on}}
     runs-on: ${{matrix.runs-on}}
@@ -47,6 +46,12 @@ jobs:
     - name: lspci
       continue-on-error: true
       run: lspci -vv
+
+    - name: printenv
+      run: printenv
+
+    - name: cat /etc/environment
+      run: cat /etc/environment
 
     - name: list installed
       run: |
