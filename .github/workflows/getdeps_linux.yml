@@ -12,11 +12,12 @@ jobs:
     strategy:
       matrix:
         runs-on: [
-          ubuntu-latest,
+          gitrunners-ubuntu-2204-x64-2vcpu, gitrunners-ubuntu-2204-arm64-2vcpu
+          # ubuntu-latest,
           # ubicloud-standard-2-ubuntu-2204, ubicloud-standard-4-ubuntu-2204, ubicloud-standard-2-ubuntu-2204-arm, ubicloud-standard-4-ubuntu-2204-arm,
           # buildjet-2vcpu-ubuntu-2204, buildjet-4vcpu-ubuntu-2204, buildjet-2vcpu-ubuntu-2204-arm, buildjet-4vcpu-ubuntu-2204-arm,
           # namespace-profile-x64-2x8, namespace-profile-x64-4x16, namespace-profile-arm64-2x8, namespace-profile-arm64-4x16,
-          warp-ubuntu-latest-x64-2x, warp-ubuntu-latest-x64-4x, warp-ubuntu-latest-arm64-2x, warp-ubuntu-latest-arm64-4x
+          # warp-ubuntu-latest-x64-2x, warp-ubuntu-latest-x64-4x, warp-ubuntu-latest-arm64-2x, warp-ubuntu-latest-arm64-4x
         ]
     name: ${{matrix.runs-on}}
     runs-on: ${{matrix.runs-on}}
@@ -67,3 +68,39 @@ jobs:
         sudo fio --filename=./f --size=2GB --direct=1 --rw=randrw --bs=4k --ioengine=libaio \
           --iodepth=256 --runtime=30 --numjobs=4 --time_based --group_reporting \
           --name=iops-test-job --eta-newline=1
+
+    - name: ip location
+      run: curl ipinfo.io
+       
+    - name: install speedtest-clo
+      run: sudo apt-get -y install speedtest-cli
+
+    - name: run speedtest-cli
+      run: speedtest-cli
+
+    - name: install iperf3
+      run: sudo apt-get -y install iperf3
+
+    - name: iperf3 germany
+      uses: nick-fields/retry@v2
+      with:
+        timeout_minutes: 1
+        max_attempts: 1000
+        retry_wait_seconds: 1
+        command: iperf3 -c speedtest.wtnet.de -p 5200-5209
+
+    - name: iperf3 amsterdam
+      uses: nick-fields/retry@v2
+      with:
+        timeout_minutes: 1
+        max_attempts: 1000
+        retry_wait_seconds: 1
+        command: iperf3 -c speedtest.ams1.novogara.net -p 5200-5209
+
+    - name: iperf3 new york
+      uses: nick-fields/retry@v2
+      with:
+        timeout_minutes: 1
+        max_attempts: 1000
+        retry_wait_seconds: 1
+        command: iperf3 -c speedtest.nyc1.us.leaseweb.net -p 5201-5210
