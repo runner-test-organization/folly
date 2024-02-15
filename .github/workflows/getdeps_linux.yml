@@ -15,8 +15,8 @@ jobs:
         runs-on: [
           # gitrunners-ubuntu-2204-x64-2vcpu, gitrunners-ubuntu-2204-arm64-2vcpu
           # ubuntu-latest,
-          ubicloud-standard-2-ubuntu-2204, ubicloud-standard-2-ubuntu-2204,
-          # buildjet-2vcpu-ubuntu-2204, buildjet-2vcpu-ubuntu-2204,
+          # ubicloud-standard-2-ubuntu-2204, ubicloud-standard-2-ubuntu-2204,
+          buildjet-2vcpu-ubuntu-2204, buildjet-2vcpu-ubuntu-2204,
           # namespace-profile-x64-2x8, namespace-profile-x64-2x8,
           # warp-ubuntu-latest-x64-2x, warp-ubuntu-latest-x64-2x
         ]
