@@ -6,11 +6,11 @@ on:
 
 jobs:
   save_cache:
-    name: ${{ matrix.runner }}
+    name: ${{ matrix.runner }} save ${{ matrix.index }} 
     strategy:
       matrix:
         index: [1,2,3,4,5]
-        runner: [buildjet-2vcpu-ubuntu-2204, blacksmith-2vcpu-ubuntu-2204]
+        runner: [ubicloud, ubuntu-latest, buildjet-2vcpu-ubuntu-2204, blacksmith-2vcpu-ubuntu-2204]
         # cache-provider: [github, ubicloud, buildjet-2vcpu-ubuntu-2204]
  
     runs-on: ${{ matrix.runner }}
@@ -59,12 +59,12 @@ jobs:
           sha256sum 500mb-file
 
   restore_cache:
-    name: ${{ matrix.runner }}
+    name: ${{ matrix.runner }} restore ${{ matrix.index }} 
     needs: save_cache
     strategy:
       matrix:
         index: [1,2,3,4,5]
-        runner: [buildjet-2vcpu-ubuntu-2204, blacksmith-2vcpu-ubuntu-2204]
+        runner: [ubicloud, buildjet-2vcpu-ubuntu-2204, blacksmith-2vcpu-ubuntu-2204]
 
     runs-on: ${{ matrix.runner }}
     steps:
