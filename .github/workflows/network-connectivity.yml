@@ -1,0 +1,31 @@
+name: Benchmark network
+on:
+  push:
+    branches:
+      - cache-test
+
+jobs:
+  save_cache:
+    name: ${{ matrix.runner }} ${{ matrix.index }}
+    strategy:
+      matrix:
+        index: [1, 2, 3]
+        runner: [ubicloud, ubuntu-latest, buildjet-2vcpu-ubuntu-2204, blacksmith-2vcpu-ubuntu-2204]
+        # cache-provider: [github, ubicloud, buildjet-2vcpu-ubuntu-2204]
+ 
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: fsn
+        run: |
+          curl -o /dev/null 'https://fsn1-speed.hetzner.com/10GB.bin' 
+
+
+      - name: nbg
+        run: |
+          curl -o /dev/null 'https://nbg1-speed.hetzner.com/10GB.bin' 
+
+      - name: hel
+        run: |
+          curl -o /dev/null 'http://hel.icmp.hetzner.com/10GB.bin' 
+
+          

@@ -1,8 +1,8 @@
 name: Benchmark cache
 on:
-  push:
-    branches:
-      - cache-test
+  # push:
+  #   branches:
+  #     - cache-test
 
 jobs:
   save_cache:
