@@ -6,21 +6,19 @@ on:
 
 jobs:
   save_cache:
-    name: ${{ matrix.runner }} to ${{ matrix.cache-provider }}
+    name: ${{ matrix.runner }}
     strategy:
       matrix:
-        index: [1,2,3,4,5,6,7,8,9,10]
-        runner: [ubicloud, ubuntu-latest]
-        cache-provider: [github, ubicloud]
-        exclude:
-          - runner: ubuntu-latest
-            cache-provider: ubicloud
+        index: [1,2,3,4,5]
+        runner: [buildjet-2vcpu-ubuntu-2204]
+        # cache-provider: [github, ubicloud, buildjet-2vcpu-ubuntu-2204]
  
     runs-on: ${{ matrix.runner }}
     steps:
       - run: sleep 10
+
       - name: ubicloud/cache@v4
-        if: matrix.cache-provider == 'ubicloud'
+        if: matrix.runner == 'ubicloud'
         id: cache-ubicloud
         uses: ubicloud/cache@v4
         with:
@@ -28,15 +26,23 @@ jobs:
           key: 500mb-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.runner }}-${{ matrix.index }}
 
       - name: actions/cache@v4
-        if: matrix.cache-provider == 'github'
+        if: matrix.runner == 'ubuntu-latest'
         id: cache-github
         uses: actions/cache@v4
         with:
           path: 500mb-file 
           key: 500mb-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.runner }}-${{ matrix.index }}
+ 
+      - name: buildjet/cache@v4
+        if: matrix.runner == 'buildjet-2vcpu-ubuntu-2204'
+        id: cache-buildjet
+        uses: buildjet/cache@v4
+        with:
+          path: 500mb-file 
+          key: 500mb-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.runner }}-${{ matrix.index }}
   
       - name: Generate test file if cache miss
-        if: steps.cache-ubicloud.outputs.cache-hit != 'true' && steps.cache-github.outputs.cache-hit != 'true'
+        if: steps.cache-ubicloud.outputs.cache-hit != 'true' && steps.cache-github.outputs.cache-hit != 'true'  && steps.cache-buildjet.outputs.cache-hit != 'true'
         run: dd if=/dev/urandom of=500mb-file bs=1M count=500
 
       - name: Verify file
@@ -45,22 +51,18 @@ jobs:
           sha256sum 500mb-file
 
   restore_cache:
-    name: ${{ matrix.runner }} from ${{ matrix.cache-provider }}
+    name: ${{ matrix.runner }}
     needs: save_cache
     strategy:
       matrix:
-        index: [1,2,3,4,5,6,7,8,9,10]
-        runner: [ubicloud, ubuntu-latest]
-        cache-provider: [github, ubicloud]
-        exclude:
-          - runner: ubuntu-latest
-            cache-provider: ubicloud
+        index: [1,2,3,4,5]
+        runner: [buildjet-2vcpu-ubuntu-2204]
 
     runs-on: ${{ matrix.runner }}
     steps:
       - run: sleep 10
       - name: ubicloud/cache@v4
-        if: matrix.cache-provider == 'ubicloud'
+        if: matrix.runner == 'ubicloud'
         id: cache-ubicloud
         uses: ubicloud/cache@v4
         with:
@@ -68,16 +70,24 @@ jobs:
           key: 500mb-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.runner }}-1
 
       - name: actions/cache@v4
-        if: matrix.cache-provider == 'github'
+        if: matrix.runner == 'ubuntu-latest'
         id: cache-github
         uses: actions/cache@v4
         with:
           path: 500mb-file 
           key: 500mb-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.runner }}-1
 
+      - name: buildjet/cache@v4
+        if: matrix.runner == 'buildjet-2vcpu-ubuntu-2204'
+        id: cache-buildjet
+        uses: buildjet/cache@v4
+        with:
+          path: 500mb-file 
+          key: 500mb-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.runner }}-1
+  
       - name: Check cache exists
         continue-on-error: true
-        if: steps.cache-ubicloud.outputs.cache-hit != 'true' && steps.cache-github.outputs.cache-hit != 'true'
+        if: steps.cache-ubicloud.outputs.cache-hit != 'true' && steps.cache-github.outputs.cache-hit != 'true'  && steps.cache-buildjet.outputs.cache-hit != 'true'
         run: exit 1
 
       - name: Verify file
