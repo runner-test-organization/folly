@@ -10,12 +10,12 @@ jobs:
     strategy:
       matrix:
         index: [1,2,3,4,5]
-        runner: [buildjet-2vcpu-ubuntu-2204]
+        runner: [buildjet-2vcpu-ubuntu-2204, blacksmith-2vcpu-ubuntu-2204]
         # cache-provider: [github, ubicloud, buildjet-2vcpu-ubuntu-2204]
  
     runs-on: ${{ matrix.runner }}
     steps:
-      - run: sleep 10
+      - run: sleep 5
 
       - name: ubicloud/cache@v4
         if: matrix.runner == 'ubicloud'
@@ -40,9 +40,17 @@ jobs:
         with:
           path: 500mb-file 
           key: 500mb-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.runner }}-${{ matrix.index }}
+ 
+      - name: useblacksmith/cache@v5
+        if: matrix.runner == 'blacksmith-2vcpu-ubuntu-2204'
+        id: cache-blacksmith
+        uses: useblacksmith/cache@v5
+        with:
+          path: 500mb-file 
+          key: 500mb-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.runner }}-${{ matrix.index }}
   
       - name: Generate test file if cache miss
-        if: steps.cache-ubicloud.outputs.cache-hit != 'true' && steps.cache-github.outputs.cache-hit != 'true'  && steps.cache-buildjet.outputs.cache-hit != 'true'
+        if: steps.cache-ubicloud.outputs.cache-hit != 'true' && steps.cache-github.outputs.cache-hit != 'true'  && steps.cache-buildjet.outputs.cache-hit != 'true' && steps.cache-blacksmith.outputs.cache-hit != 'true'
         run: dd if=/dev/urandom of=500mb-file bs=1M count=500
 
       - name: Verify file
@@ -56,11 +64,12 @@ jobs:
     strategy:
       matrix:
         index: [1,2,3,4,5]
-        runner: [buildjet-2vcpu-ubuntu-2204]
+        runner: [buildjet-2vcpu-ubuntu-2204, blacksmith-2vcpu-ubuntu-2204]
 
     runs-on: ${{ matrix.runner }}
     steps:
-      - run: sleep 10
+      - run: sleep 5
+
       - name: ubicloud/cache@v4
         if: matrix.runner == 'ubicloud'
         id: cache-ubicloud
@@ -84,10 +93,18 @@ jobs:
         with:
           path: 500mb-file 
           key: 500mb-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.runner }}-1
-  
+
+      - name: useblacksmith/cache@v5
+        if: matrix.runner == 'blacksmith-2vcpu-ubuntu-2204'
+        id: cache-blacksmith
+        uses: useblacksmith/cache@v5
+        with:
+          path: 500mb-file 
+          key: 500mb-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.runner }}-1
+ 
       - name: Check cache exists
         continue-on-error: true
-        if: steps.cache-ubicloud.outputs.cache-hit != 'true' && steps.cache-github.outputs.cache-hit != 'true'  && steps.cache-buildjet.outputs.cache-hit != 'true'
+        if: steps.cache-ubicloud.outputs.cache-hit != 'true' && steps.cache-github.outputs.cache-hit != 'true'  && steps.cache-buildjet.outputs.cache-hit != 'true' && steps.cache-blacksmith.outputs.cache-hit != 'true'
         run: exit 1
 
       - name: Verify file
