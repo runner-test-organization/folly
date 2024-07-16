@@ -10,19 +10,19 @@ on:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         runs-on: [
           ubuntu-latest,
           ubicloud-standard-2-ubuntu-2204, ubicloud-standard-4-ubuntu-2204,
           # ubicloud-standard-2-arm-ubuntu-2204, ubicloud-standard-4-arm-ubuntu-2204,
-          # buildjet-2vcpu-ubuntu-2204, buildjet-4vcpu-ubuntu-2204,
+          buildjet-2vcpu-ubuntu-2204, buildjet-4vcpu-ubuntu-2204,
           # buildjet-2vcpu-ubuntu-2204-arm, buildjet-4vcpu-ubuntu-2204-arm,
-          # namespace-profile-x64-2x8, namespace-profile-x64-2x8,
+          namespace-profile-x64-2x8, namespace-profile-x64-2x8,
           # namespace-profile-arm64-2x8, namespace-profile-arm64-4x16, 
-          # warp-ubuntu-latest-x64-2x, warp-ubuntu-latest-x64-4x,
+          warp-ubuntu-latest-x64-2x, warp-ubuntu-latest-x64-4x,
           # warp-ubuntu-latest-arm64-2x, warp-ubuntu-latest-arm64-4x,
-          # blacksmith-2vcpu-ubuntu-2204, blacksmith-4vcpu-ubuntu-2204,
-          blacksmith-2vcpu-ubuntu-2204, blacksmith-4vcpu-ubuntu-2204, blacksmith-8vcpu-ubuntu-2204, blacksmith-16vcpu-ubuntu-2204, blacksmith-32vcpu-ubuntu-2204,
+          blacksmith-2vcpu-ubuntu-2204, blacksmith-4vcpu-ubuntu-2204, blacksmith-2vcpu-ubuntu-2204-arm, blacksmith-4vcpu-ubuntu-2204-arm,
         ]
     name: ${{matrix.runs-on}}
     runs-on: ${{matrix.runs-on}}
@@ -97,25 +97,53 @@ jobs:
       continue-on-error: true
       run: groups runner
 
-    - name: install passmark
-      run: |
-        sudo apt-get install -y libncurses5
-        wget "https://www.passmark.com/downloads/pt_linux_x64.zip" -O pt.zip
-        unzip pt.zip
+    - name: sudo ls -lah /var/lib/docker
+      continue-on-error: true
+      run: sudo ls -lah /var/lib/docker
+
+    - name: sudo ls -lah /var/lib/docker/overlay2
+      continue-on-error: true
+      run: sudo ls -lah /var/lib/docker/overlay2
     
-    - name: run passmark
-      run: |
-        # Run PerformanceTest with 2 proccesses, 2 iterations
-        TERM=xterm ./PerformanceTest/pt_linux_x64 -p 2 -d 2 -i 2 -r 1
+    - name: sudo du -sh /var/lib/docker
+      continue-on-error: true
+      run: sudo du -sh /var/lib/docker
 
-    - name: passmark results
-      run: cat results_cpu.yml
+    - name: sudo du -sh /var/lib/docker
+      continue-on-error: true
+      run: sudo du -sh /var/lib/docker
 
-    - name: install sysbench
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y sysbench
+    - name: sudo du -sh /var/lib/docker/overlay2
+      continue-on-error: true
+      run: sudo du -sh /var/lib/docker/overlay2
+  
+    - name: sudo lsblk
+      continue-on-error: true
+      run: sudo lsblk
 
-    - name: run sysbench
-      run: |
-        sysbench --test=cpu run
+    - name: sudo df -Th
+      continue-on-error: true
+      run: sudo df -Th
+
+    # - name: install passmark
+    #   run: |
+    #     sudo apt-get install -y libncurses5
+    #     wget "https://www.passmark.com/downloads/pt_linux_x64.zip" -O pt.zip
+    #     unzip pt.zip
+    
+    # - name: run passmark
+    #   run: |
+    #     # Run PerformanceTest with 2 proccesses, 2 iterations
+    #     TERM=xterm ./PerformanceTest/pt_linux_x64 -p 2 -d 2 -i 2 -r 1
+
+    # - name: passmark results
+    #   run: cat results_cpu.yml
+
+    # - name: install sysbench
+    #   run: |
+    #     sudo apt-get update
+    #     sudo apt-get install -y sysbench
+
+    # - name: run sysbench
+    #   run: |
+    #     sysbench --test=cpu run
