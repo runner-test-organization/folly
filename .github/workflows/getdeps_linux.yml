@@ -5,159 +5,114 @@ name: linux
 on:
   push:
     branches:
-    - build-test
+    - test-codebuild
 
 jobs:
   build:
-    strategy:
-      fail-fast: false
-      matrix:
-        runs-on: [
-          ubuntu-latest,
-          # ubicloud-standard-2-ubuntu-2204, ubicloud-standard-4-ubuntu-2204,
-          # ubicloud-standard-2-arm-ubuntu-2204, ubicloud-standard-4-arm-ubuntu-2204,
-          # buildjet-2vcpu-ubuntu-2204, buildjet-4vcpu-ubuntu-2204,
-          # buildjet-2vcpu-ubuntu-2204-arm, buildjet-4vcpu-ubuntu-2204-arm,
-          # namespace-profile-x64-2x8, namespace-profile-x64-2x8,
-          # namespace-profile-arm64-2x8, namespace-profile-arm64-4x16, 
-          # warp-ubuntu-latest-x64-2x, warp-ubuntu-latest-x64-4x,
-          # warp-ubuntu-latest-arm64-2x, warp-ubuntu-latest-arm64-4x,
-          # blacksmith-2vcpu-ubuntu-2204, blacksmith-4vcpu-ubuntu-2204, blacksmith-2vcpu-ubuntu-2204-arm, blacksmith-4vcpu-ubuntu-2204-arm,
-          blacksmith-2vcpu-ubuntu-2204
-        ]
-    name: ${{matrix.runs-on}}
-    runs-on: ${{matrix.runs-on}}
+    runs-on:
+      - codebuild-enes-test-${{ github.run_id }}-${{ github.run_attempt }}
+      - image:linux-lambda-ruby3.2
+      - instance-size:2GB
     continue-on-error: true
     steps:
-      - name: cat /etc/docker/daemon.json
-        run: cat /etc/docker/daemon.json
+    - name: cat /proc/cpuinfo
+      run: cat /proc/cpuinfo
 
-      - name: check repos
-        run: |
-          curl -X GET http://192.168.127.1:5000/v2/_catalog
-        
-      - name: docker
-        run: |
-          docker pull alpine:latest
-          docker image tag alpine:latest 192.168.127.1:5000/amazon/aws-cli:latest
-          docker push 192.168.127.1:5000/amazon/aws-cli:latest
+    - name: uname -mr
+      run: uname -mr
 
-    # - name: cat /proc/cpuinfo
-    #   run: cat /proc/cpuinfo
+    - name: nproc
+      run: nproc
 
-    # - name: uname -mr
-    #   run: uname -mr
+    - name: lscpu
+      run: lscpu
 
-    # - name: nproc
-    #   run: nproc
+    - name: free -h
+      run: free -h
 
-    # - name: lscpu
-    #   run: lscpu
+    - name: lsblk
+      run: lsblk
 
-    # - name: free -h
-    #   run: free -h
-
-    # - name: lsblk
-    #   run: lsblk
-
-    # - name: df -Th
-    #   run: df -Th
+    - name: df -Th
+      run: df -Th
     
-    # - name: ip info
-    #   run: curl ipinfo.io
+    - name: ip info
+      run: curl ipinfo.io
 
-    # - name: curl --max-time 3 http://169.254.169.254/latest/meta-data/
-    #   continue-on-error: true
-    #   run: curl --max-time 3 http://169.254.169.254/latest/meta-data/
+    - name: lspci
+      continue-on-error: true
+      run: lspci -vv
+
+    - name: printenv
+      run: printenv
+
+    - name: cat /etc/environment
+      run: cat /etc/environment
+
+    - name: ls -lah
+      run: ls -lah
+
+    - name: ls -lah /home/runner
+      continue-on-error: true
+      run: ls -lah /home/runner
     
-    # - name: curl --max-time 3 http://169.254.169.254/latest/meta-data/instance-type
-    #   continue-on-error: true
-    #   run: curl --max-time 3 http://169.254.169.254/latest/meta-data/instance-type
-
-    # - name: curl --max-time 3 http://metadata.google.internal/computeMetadata/v1/instance/
-    #   continue-on-error: true
-    #   run: |
-    #     curl --max-time 3 "http://metadata.google.internal/computeMetadata/v1/instance/?" -H "Metadata-Flavor: Google"
-
-    # - name: curl --max-time 3 http://metadata.google.internal/computeMetadata/v1/instance/machine-type
-    #   continue-on-error: true
-    #   run: |
-    #     curl --max-time 3 "http://metadata.google.internal/computeMetadata/v1/instance/machine-type" -H "Metadata-Flavor: Google"
-
-    # - name: lspci
-    #   continue-on-error: true
-    #   run: lspci -vv
-
-    # - name: printenv
-    #   run: printenv
-
-    # - name: cat /etc/environment
-    #   run: cat /etc/environment
-
-    # - name: ls -lah
-    #   run: ls -lah
-
-    # - name: ls -lah /home/runner
-    #   continue-on-error: true
-    #   run: ls -lah /home/runner
-    
-    # - name: cat /etc/group
-    #   run: cat /etc/group
+    - name: cat /etc/group
+      run: cat /etc/group
    
-    # - name: cat /etc/passwd
-    #   run: cat /etc/passwd
+    - name: cat /etc/passwd
+      run: cat /etc/passwd
 
-    # - name: groups runner
-    #   continue-on-error: true
-    #   run: groups runner
+    - name: groups runner
+      continue-on-error: true
+      run: groups runner
 
-    # - name: sudo ls -lah /var/lib/docker
-    #   continue-on-error: true
-    #   run: sudo ls -lah /var/lib/docker
+    - name: sudo ls -lah /var/lib/docker
+      continue-on-error: true
+      run: sudo ls -lah /var/lib/docker
 
-    # - name: sudo ls -lah /var/lib/docker/overlay2
-    #   continue-on-error: true
-    #   run: sudo ls -lah /var/lib/docker/overlay2
+    - name: sudo ls -lah /var/lib/docker/overlay2
+      continue-on-error: true
+      run: sudo ls -lah /var/lib/docker/overlay2
     
-    # - name: sudo du -sh /var/lib/docker
-    #   continue-on-error: true
-    #   run: sudo du -sh /var/lib/docker
+    - name: sudo du -sh /var/lib/docker
+      continue-on-error: true
+      run: sudo du -sh /var/lib/docker
 
-    # - name: sudo du -sh /var/lib/docker
-    #   continue-on-error: true
-    #   run: sudo du -sh /var/lib/docker
+    - name: sudo du -sh /var/lib/docker
+      continue-on-error: true
+      run: sudo du -sh /var/lib/docker
 
-    # - name: sudo du -sh /var/lib/docker/overlay2
-    #   continue-on-error: true
-    #   run: sudo du -sh /var/lib/docker/overlay2
+    - name: sudo du -sh /var/lib/docker/overlay2
+      continue-on-error: true
+      run: sudo du -sh /var/lib/docker/overlay2
   
-    # - name: sudo lsblk
-    #   continue-on-error: true
-    #   run: sudo lsblk
+    - name: sudo lsblk
+      continue-on-error: true
+      run: sudo lsblk
 
-    # - name: sudo df -Th
-    #   continue-on-error: true
-    #   run: sudo df -Th
+    - name: sudo df -Th
+      continue-on-error: true
+      run: sudo df -Th
 
-    # - name: install passmark
-    #   run: |
-    #     sudo apt-get install -y libncurses5
-    #     wget "https://www.passmark.com/downloads/pt_linux_x64.zip" -O pt.zip
-    #     unzip pt.zip
+    - name: install passmark
+      run: |
+        sudo apt-get install -y libncurses5
+        wget "https://www.passmark.com/downloads/pt_linux_x64.zip" -O pt.zip
+        unzip pt.zip
     
-    # - name: run passmark
-    #   run: |
-    #     # Run PerformanceTest with 2 proccesses, 2 iterations
-    #     TERM=xterm ./PerformanceTest/pt_linux_x64 -p 2 -d 2 -i 2 -r 1
+    - name: run passmark
+      run: |
+        # Run PerformanceTest with 2 proccesses, 2 iterations
+        TERM=xterm ./PerformanceTest/pt_linux_x64 -p 2 -d 2 -i 2 -r 1
 
-    # - name: passmark results
-    #   run: cat results_cpu.yml
+    - name: passmark results
+      run: cat results_cpu.yml
 
-    # - name: install sysbench
-    #   run: |
-    #     sudo apt-get update
-    #     sudo apt-get install -y sysbench
+    - name: install sysbench
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y sysbench
 
-    # - name: run sysbench
-    #   run: |
-    #     sysbench --test=cpu run
+    - name: run sysbench
+      run: |
+        sysbench --test=cpu run
