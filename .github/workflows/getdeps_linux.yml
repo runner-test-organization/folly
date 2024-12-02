@@ -14,13 +14,13 @@ jobs:
       matrix:
         runs-on: [
           ubuntu-latest,
-          # ubicloud-standard-2-ubuntu-2204, ubicloud-standard-4-ubuntu-2204,
+          ubicloud-standard-2-ubuntu-2204,
           # ubicloud-standard-2-arm-ubuntu-2204, ubicloud-standard-4-arm-ubuntu-2204,
-          # buildjet-2vcpu-ubuntu-2204, buildjet-4vcpu-ubuntu-2204,
+          buildjet-2vcpu-ubuntu-2204,
           # buildjet-2vcpu-ubuntu-2204-arm, buildjet-4vcpu-ubuntu-2204-arm,
           # namespace-profile-x64-2x8, namespace-profile-x64-2x8,
           # namespace-profile-arm64-2x8, namespace-profile-arm64-4x16, 
-          # warp-ubuntu-latest-x64-2x, warp-ubuntu-latest-x64-4x,
+          warp-ubuntu-latest-x64-2x, 
           # warp-ubuntu-latest-arm64-2x, warp-ubuntu-latest-arm64-4x,
           # blacksmith-2vcpu-ubuntu-2204, blacksmith-4vcpu-ubuntu-2204, blacksmith-2vcpu-ubuntu-2204-arm, blacksmith-4vcpu-ubuntu-2204-arm,
           blacksmith-2vcpu-ubuntu-2204
@@ -29,18 +29,16 @@ jobs:
     runs-on: ${{matrix.runs-on}}
     continue-on-error: true
     steps:
-      - name: cat /etc/docker/daemon.json
-        run: cat /etc/docker/daemon.json
+      - run: cat /etc/docker/daemon.json
+        continue-on-error: true
 
-      - name: check repos
-        run: |
-          curl -X GET http://192.168.127.1:5000/v2/_catalog
-        
-      - name: docker
-        run: |
-          docker pull alpine:latest
-          docker image tag alpine:latest 192.168.127.1:5000/amazon/aws-cli:latest
-          docker push 192.168.127.1:5000/amazon/aws-cli:latest
+      - run: ip a
+
+      - run: docker info
+
+      - run: cat /etc/hosts
+      
+      - run: resolvectl status
 
     # - name: cat /proc/cpuinfo
     #   run: cat /proc/cpuinfo
