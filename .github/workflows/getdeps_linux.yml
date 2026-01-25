@@ -14,16 +14,17 @@ jobs:
       matrix:
         runs-on: [
           ubuntu-22.04, ubuntu-24.04,
-          ubicloud-standard-2-ubuntu-2204, ubicloud-standard-2-ubuntu-2404,
+          # ubicloud-standard-2-ubuntu-2204, ubicloud-standard-2-ubuntu-2404,
           # ubicloud-standard-2-arm-ubuntu-2204, ubicloud-standard-4-arm-ubuntu-2204,
-          buildjet-2vcpu-ubuntu-2204, buildjet-2vcpu-ubuntu-2404,
+          # buildjet-2vcpu-ubuntu-2204, buildjet-2vcpu-ubuntu-2404,
           # buildjet-2vcpu-ubuntu-2204-arm, buildjet-4vcpu-ubuntu-2204-arm,
           # namespace-profile-x64-2x8,
           # namespace-profile-arm64-2x8, namespace-profile-arm64-4x16, 
-          warp-ubuntu-latest-x64-2x, warp-ubuntu-2204-x64-2x,
+          # warp-ubuntu-latest-x64-2x, warp-ubuntu-2204-x64-2x,
           # warp-ubuntu-2204-arm64-2x, warp-ubuntu-2204-arm64-4x,
-          # blacksmith-2vcpu-ubuntu-2204, blacksmith-4vcpu-ubuntu-2204, blacksmith-2vcpu-ubuntu-2204-arm, blacksmith-4vcpu-ubuntu-2204-arm,
-          blacksmith-2vcpu-ubuntu-2204, blacksmith-2vcpu-ubuntu-2404
+          blacksmith-2vcpu-ubuntu-2204, blacksmith-4vcpu-ubuntu-2204,
+          # blacksmith-2vcpu-ubuntu-2204-arm, blacksmith-4vcpu-ubuntu-2204-arm,
+          # blacksmith-2vcpu-ubuntu-2204, blacksmith-2vcpu-ubuntu-2404
         ]
     name: ${{matrix.runs-on}}
     runs-on: ${{matrix.runs-on}}
