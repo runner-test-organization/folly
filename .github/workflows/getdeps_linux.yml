@@ -23,14 +23,19 @@ jobs:
           # blacksmith-2vcpu-ubuntu-2204, blacksmith-4vcpu-ubuntu-2204,
           # blacksmith-2vcpu-ubuntu-2204-arm, blacksmith-4vcpu-ubuntu-2204-arm,
           # blacksmith-2vcpu-ubuntu-2204, blacksmith-2vcpu-ubuntu-2404
+          ubuntu-22.04,
           ubicloud-standard-2-ubuntu-2204,
           ubicloud-premium-2-ubuntu-2204,
           buildjet-2vcpu-ubuntu-2204,
-
+          blacksmith-2vcpu-ubuntu-2204,
+          warp-ubuntu-2204-x64-2x
         ]
     name: ${{matrix.runs-on}}
     runs-on: ${{matrix.runs-on}}
     continue-on-error: true
+    env:
+      S: /tmp/bench.csv
+      SUMMARY_FILE: /tmp/benchmark_summary.md
 
     services:
       postgres:
@@ -48,36 +53,48 @@ jobs:
 
     steps:
     # ── 1. System Information ────────────────────────────────────
-    - name: "System Info: Kernel & Architecture"
-      run: uname -a
+    - name: "System Info"
+      run: |
+        CPU_MODEL=$(grep -m1 "model name" /proc/cpuinfo | cut -d: -f2 | xargs || echo "N/A")
+        ARCH=$(uname -m)
+        KERNEL=$(uname -r)
+        CORES=$(nproc)
+        RAM=$(free -h | awk '/Mem:/{print $2}')
+        DISK=$(df -h / | awk 'NR==2{print $2}')
+        DISK_FS=$(df -Th / | awk 'NR==2{print $2}')
 
-    - name: "System Info: CPU Model"
-      run: cat /proc/cpuinfo | grep -m1 "model name" || echo "N/A"
+        echo "CPU Model=$CPU_MODEL" >> "$S"
+        echo "Architecture=$ARCH" >> "$S"
+        echo "Kernel=$KERNEL" >> "$S"
+        echo "Cores=$CORES" >> "$S"
+        echo "RAM=$RAM" >> "$S"
+        echo "Disk=$DISK ($DISK_FS)" >> "$S"
 
-    - name: "System Info: CPU Details (lscpu)"
-      run: lscpu
+        # Full info in logs
+        uname -a
+        lscpu
+        free -h
+        lsblk
+        df -Th
 
-    - name: "System Info: Core Count"
-      run: nproc
-
-    - name: "System Info: Memory"
-      run: free -h
-
-    - name: "System Info: Block Devices"
-      run: lsblk
-
-    - name: "System Info: Disk Usage"
-      run: df -Th
-
-    - name: "System Info: Docker Version"
-      run: docker version
-
-    - name: "System Info: Docker Info"
-      run: docker info
+    - name: "Docker Info"
+      run: |
+        docker version
+        docker info
 
     # ── 2. Datacenter / Provider Detection ───────────────────────
-    - name: "Provider: IP Info"
-      run: curl -s ipinfo.io
+    - name: "Provider Info"
+      run: |
+        IPINFO=$(curl -s ipinfo.io)
+        ORG=$(echo "$IPINFO" | jq -r '.org // "N/A"')
+        CITY=$(echo "$IPINFO" | jq -r '.city // "N/A"')
+        REGION=$(echo "$IPINFO" | jq -r '.region // "N/A"')
+        COUNTRY=$(echo "$IPINFO" | jq -r '.country // "N/A"')
+        MANUFACTURER=$(sudo dmidecode -s system-manufacturer 2>/dev/null || echo "N/A")
+
+        echo "Provider=$ORG" >> "$S"
+        echo "Location=$CITY, $REGION, $COUNTRY" >> "$S"
+        echo "Manufacturer=$MANUFACTURER" >> "$S"
 
     - name: "Provider: AWS Metadata"
       continue-on-error: true
@@ -86,10 +103,6 @@ jobs:
     - name: "Provider: Cloud Init Info"
       continue-on-error: true
       run: cloud-init query --all 2>/dev/null || cat /etc/cloud/cloud.cfg.d/*.cfg 2>/dev/null || echo "No cloud-init info available"
-
-    - name: "Provider: Hardware / Hypervisor"
-      continue-on-error: true
-      run: sudo dmidecode -s system-manufacturer 2>/dev/null || echo "dmidecode not available"
 
     - name: "Provider: Environment Variables"
       run: printenv | sort
@@ -106,19 +119,40 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y sysbench fio p7zip-full postgresql-client
+        mkdir -p /tmp/fio
 
     # ── 4. CPU Performance ───────────────────────────────────────
     - name: "CPU: sysbench single-thread"
-      run: sysbench cpu --threads=1 --time=30 run
+      run: |
+        OUTPUT=$(sysbench cpu --threads=1 --time=30 run)
+        echo "$OUTPUT"
+        EPS=$(echo "$OUTPUT" | grep "events per second" | awk '{print $NF}')
+        echo "CPU: sysbench 1-thread=$EPS events/sec" >> "$S"
 
     - name: "CPU: sysbench multi-thread"
-      run: sysbench cpu --threads=$(nproc) --time=30 run
+      run: |
+        THREADS=$(nproc)
+        OUTPUT=$(sysbench cpu --threads=$THREADS --time=30 run)
+        echo "$OUTPUT"
+        EPS=$(echo "$OUTPUT" | grep "events per second" | awk '{print $NF}')
+        echo "CPU: sysbench ${THREADS}-thread=$EPS events/sec" >> "$S"
 
     - name: "CPU: openssl speed (crypto)"
-      run: openssl speed -seconds 10 -multi $(nproc) sha256 aes-256-cbc rsa2048
+      run: |
+        OUTPUT=$(openssl speed -seconds 10 -multi $(nproc) sha256 aes-256-cbc 2>&1)
+        echo "$OUTPUT"
+        SHA256=$(echo "$OUTPUT" | grep "^sha256" | awk '{print $NF}')
+        AES=$(echo "$OUTPUT" | grep "^aes-256-cbc" | awk '{print $NF}')
+        echo "CPU: OpenSSL SHA256=${SHA256}k (16K block)" >> "$S"
+        echo "CPU: OpenSSL AES-256-CBC=${AES}k (16K block)" >> "$S"
 
     - name: "CPU: 7-Zip compression benchmark"
-      run: 7z b
+      run: |
+        OUTPUT=$(7z b)
+        echo "$OUTPUT"
+        TOT_LINE=$(echo "$OUTPUT" | grep "^Tot:")
+        TOTAL=$(echo "$TOT_LINE" | awk '{print $4}')
+        echo "CPU: 7-Zip=$TOTAL MIPS" >> "$S"
 
     - name: "CPU: Install Passmark (x86 only)"
       if: runner.arch == 'X64'
@@ -136,59 +170,148 @@ jobs:
 
     - name: "CPU: Run Passmark (x86 only)"
       if: runner.arch == 'X64'
-      run: TERM=xterm ./PerformanceTest/PerformanceTest_Linux_x86-64 -p 2 -d 2 -i 2 -r 1
-
-    - name: "CPU: Passmark Results"
-      if: runner.arch == 'X64'
-      run: cat results_cpu.yml
+      run: |
+        TERM=xterm ./PerformanceTest/PerformanceTest_Linux_x86-64 -p 2 -d 2 -i 2 -r 1
+        SCORE=$(grep "SUMM_CPU" results_cpu.yml | head -1 | awk '{print $2}')
+        SINGLE=$(grep "CPU_SINGLETHREAD" results_cpu.yml | head -1 | awk '{print $2}')
+        echo "CPU: Passmark CPU Mark=$SCORE" >> "$S"
+        echo "CPU: Passmark Single Thread=$SINGLE" >> "$S"
 
     # ── 5. Memory Performance ────────────────────────────────────
     - name: "Memory: sysbench read"
-      run: sysbench memory --memory-oper=read --threads=$(nproc) --time=30 run
+      run: |
+        OUTPUT=$(sysbench memory --memory-oper=read --threads=$(nproc) --time=30 run)
+        echo "$OUTPUT"
+        THROUGHPUT=$(echo "$OUTPUT" | grep "transferred" | grep -oP '[\d.]+\s+MiB/sec' | head -1)
+        echo "Memory: read=$THROUGHPUT" >> "$S"
 
     - name: "Memory: sysbench write"
-      run: sysbench memory --memory-oper=write --threads=$(nproc) --time=30 run
+      run: |
+        OUTPUT=$(sysbench memory --memory-oper=write --threads=$(nproc) --time=30 run)
+        echo "$OUTPUT"
+        THROUGHPUT=$(echo "$OUTPUT" | grep "transferred" | grep -oP '[\d.]+\s+MiB/sec' | head -1)
+        echo "Memory: write=$THROUGHPUT" >> "$S"
 
     # ── 6. I/O Performance ───────────────────────────────────────
     - name: "I/O: fio sequential write"
       run: |
-        fio --name=seq-write --ioengine=libaio --direct=1 --bs=1M \
-          --size=1G --numjobs=1 --rw=write --group_reporting --runtime=30 --time_based
+        OUTPUT=$(fio --name=seq-write --ioengine=libaio --direct=1 --bs=1M \
+          --size=1G --numjobs=1 --rw=write --group_reporting --runtime=30 --time_based \
+          --directory=/tmp/fio)
+        echo "$OUTPUT"
+        BW=$(echo "$OUTPUT" | grep "WRITE:" | grep -oP 'bw=\S+' | head -1)
+        echo "I/O: fio seq write=$BW" >> "$S"
+        rm -rf /tmp/fio && mkdir -p /tmp/fio
 
     - name: "I/O: fio sequential read"
       run: |
-        fio --name=seq-read --ioengine=libaio --direct=1 --bs=1M \
-          --size=1G --numjobs=1 --rw=read --group_reporting --runtime=30 --time_based
+        OUTPUT=$(fio --name=seq-read --ioengine=libaio --direct=1 --bs=1M \
+          --size=1G --numjobs=1 --rw=read --group_reporting --runtime=30 --time_based \
+          --directory=/tmp/fio)
+        echo "$OUTPUT"
+        BW=$(echo "$OUTPUT" | grep "READ:" | grep -oP 'bw=\S+' | head -1)
+        echo "I/O: fio seq read=$BW" >> "$S"
+        rm -rf /tmp/fio && mkdir -p /tmp/fio
 
-    - name: "I/O: fio random read 4K (IOPS)"
+    - name: "I/O: fio random read 4K"
       run: |
-        fio --name=rand-read-4k --ioengine=libaio --direct=1 --bs=4k \
-          --size=1G --numjobs=4 --rw=randread --group_reporting --runtime=30 --time_based
+        OUTPUT=$(fio --name=rand-read-4k --ioengine=libaio --direct=1 --bs=4k \
+          --size=1G --numjobs=4 --rw=randread --group_reporting --runtime=30 --time_based \
+          --directory=/tmp/fio)
+        echo "$OUTPUT"
+        BW=$(echo "$OUTPUT" | grep "READ:" | grep -oP 'bw=\S+' | head -1)
+        echo "I/O: fio rand read 4K=$BW" >> "$S"
+        rm -rf /tmp/fio && mkdir -p /tmp/fio
 
-    - name: "I/O: fio random write 4K (IOPS)"
+    - name: "I/O: fio random write 4K"
       run: |
-        fio --name=rand-write-4k --ioengine=libaio --direct=1 --bs=4k \
-          --size=1G --numjobs=4 --rw=randwrite --group_reporting --runtime=30 --time_based
+        OUTPUT=$(fio --name=rand-write-4k --ioengine=libaio --direct=1 --bs=4k \
+          --size=1G --numjobs=4 --rw=randwrite --group_reporting --runtime=30 --time_based \
+          --directory=/tmp/fio)
+        echo "$OUTPUT"
+        BW=$(echo "$OUTPUT" | grep "WRITE:" | grep -oP 'bw=\S+' | head -1)
+        echo "I/O: fio rand write 4K=$BW" >> "$S"
+        rm -rf /tmp/fio && mkdir -p /tmp/fio
 
     - name: "I/O: fio mixed random read/write 4K"
       run: |
-        fio --name=rand-rw-4k --ioengine=libaio --direct=1 --bs=4k \
-          --size=1G --numjobs=4 --rw=randrw --rwmixread=70 --group_reporting --runtime=30 --time_based
+        OUTPUT=$(fio --name=rand-rw-4k --ioengine=libaio --direct=1 --bs=4k \
+          --size=1G --numjobs=4 --rw=randrw --rwmixread=70 --group_reporting --runtime=30 --time_based \
+          --directory=/tmp/fio)
+        echo "$OUTPUT"
+        READ_BW=$(echo "$OUTPUT" | grep "READ:" | grep -oP 'bw=\S+' | head -1)
+        WRITE_BW=$(echo "$OUTPUT" | grep "WRITE:" | grep -oP 'bw=\S+' | head -1)
+        echo "I/O: fio mixed r/w 4K read=$READ_BW" >> "$S"
+        echo "I/O: fio mixed r/w 4K write=$WRITE_BW" >> "$S"
+        rm -rf /tmp/fio && mkdir -p /tmp/fio
+
+    - name: "I/O: fio sequential write (iodepth=256)"
+      run: |
+        OUTPUT=$(fio --name=seq-write-deep --ioengine=libaio --direct=1 --bs=1M --iodepth=256 \
+          --size=1G --numjobs=1 --rw=write --group_reporting --runtime=30 --time_based \
+          --directory=/tmp/fio)
+        echo "$OUTPUT"
+        BW=$(echo "$OUTPUT" | grep "WRITE:" | grep -oP 'bw=\S+' | head -1)
+        echo "I/O: fio seq write (d256)=$BW" >> "$S"
+        rm -rf /tmp/fio && mkdir -p /tmp/fio
+
+    - name: "I/O: fio sequential read (iodepth=256)"
+      run: |
+        OUTPUT=$(fio --name=seq-read-deep --ioengine=libaio --direct=1 --bs=1M --iodepth=256 \
+          --size=1G --numjobs=1 --rw=read --group_reporting --runtime=30 --time_based \
+          --directory=/tmp/fio)
+        echo "$OUTPUT"
+        BW=$(echo "$OUTPUT" | grep "READ:" | grep -oP 'bw=\S+' | head -1)
+        echo "I/O: fio seq read (d256)=$BW" >> "$S"
+        rm -rf /tmp/fio && mkdir -p /tmp/fio
+
+    - name: "I/O: fio random read 4K (iodepth=256)"
+      run: |
+        OUTPUT=$(fio --name=rand-read-4k-deep --ioengine=libaio --direct=1 --bs=4k --iodepth=256 \
+          --size=1G --numjobs=4 --rw=randread --group_reporting --runtime=30 --time_based \
+          --directory=/tmp/fio)
+        echo "$OUTPUT"
+        BW=$(echo "$OUTPUT" | grep "READ:" | grep -oP 'bw=\S+' | head -1)
+        echo "I/O: fio rand read 4K (d256)=$BW" >> "$S"
+        rm -rf /tmp/fio && mkdir -p /tmp/fio
+
+    - name: "I/O: fio random write 4K (iodepth=256)"
+      run: |
+        OUTPUT=$(fio --name=rand-write-4k-deep --ioengine=libaio --direct=1 --bs=4k --iodepth=256 \
+          --size=1G --numjobs=4 --rw=randwrite --group_reporting --runtime=30 --time_based \
+          --directory=/tmp/fio)
+        echo "$OUTPUT"
+        BW=$(echo "$OUTPUT" | grep "WRITE:" | grep -oP 'bw=\S+' | head -1)
+        echo "I/O: fio rand write 4K (d256)=$BW" >> "$S"
+        rm -rf /tmp/fio && mkdir -p /tmp/fio
+
+    - name: "I/O: fio mixed random read/write 4K (iodepth=256)"
+      run: |
+        OUTPUT=$(fio --name=rand-rw-4k-deep --ioengine=libaio --direct=1 --bs=4k --iodepth=256 \
+          --size=1G --numjobs=4 --rw=randrw --rwmixread=70 --group_reporting --runtime=30 --time_based \
+          --directory=/tmp/fio)
+        echo "$OUTPUT"
+        READ_BW=$(echo "$OUTPUT" | grep "READ:" | grep -oP 'bw=\S+' | head -1)
+        WRITE_BW=$(echo "$OUTPUT" | grep "WRITE:" | grep -oP 'bw=\S+' | head -1)
+        echo "I/O: fio mixed r/w 4K read (d256)=$READ_BW" >> "$S"
+        echo "I/O: fio mixed r/w 4K write (d256)=$WRITE_BW" >> "$S"
+        rm -rf /tmp/fio
 
     - name: "I/O: dd sequential write"
-      run: dd if=/dev/zero of=./dd_test bs=1M count=1024 conv=fdatasync 2>&1 && rm -f ./dd_test
+      run: |
+        OUTPUT=$(dd if=/dev/zero of=./dd_test bs=1M count=1024 conv=fdatasync 2>&1)
+        echo "$OUTPUT"
+        SPEED=$(echo "$OUTPUT" | grep -oP '[\d.]+ [MGT]B/s' | tail -1)
+        echo "I/O: dd write=$SPEED" >> "$S"
+        rm -f ./dd_test
 
     # ── 7. Network Performance ───────────────────────────────────
     - name: "Network: Download speed test"
       run: |
-        curl -o /dev/null -w "Download speed: %{speed_download} bytes/sec\nTotal time: %{time_total}s\nSize: %{size_download} bytes\n" \
-          https://releases.ubuntu.com/24.04/ubuntu-24.04.2-live-server-amd64.iso.zsync
-
-    - name: "Network: Ping latency (github.com)"
-      run: ping -c 10 github.com
-
-    - name: "Network: Ping latency (8.8.8.8)"
-      run: ping -c 10 8.8.8.8
+        OUTPUT=$(curl -o /dev/null -w '%{speed_download} %{time_total} %{size_download}' -s \
+          https://releases.ubuntu.com/24.04/ubuntu-24.04.2-live-server-amd64.iso.zsync)
+        SPEED=$(echo "$OUTPUT" | awk '{printf "%.0f", $1}')
+        echo "Network: download=$SPEED bytes/sec" >> "$S"
 
     # ── 8. PostgreSQL Performance ────────────────────────────────
     - name: "PostgreSQL: Initialize pgbench (scale 50)"
@@ -197,8 +320,108 @@ jobs:
 
     - name: "PostgreSQL: Read-only benchmark"
       run: |
-        PGPASSWORD=postgres pgbench -h localhost -U postgres -S -c 10 -j $(nproc) -T 60 bench
+        OUTPUT=$(PGPASSWORD=postgres pgbench -h localhost -U postgres -S -c 10 -j $(nproc) -T 60 bench)
+        echo "$OUTPUT"
+        TPS=$(echo "$OUTPUT" | grep -oP 'tps = \K[\d.]+')
+        echo "PostgreSQL: read-only=$TPS TPS" >> "$S"
 
     - name: "PostgreSQL: Read-write benchmark (TPC-B)"
       run: |
-        PGPASSWORD=postgres pgbench -h localhost -U postgres -c 10 -j $(nproc) -T 60 bench
+        OUTPUT=$(PGPASSWORD=postgres pgbench -h localhost -U postgres -c 10 -j $(nproc) -T 60 bench)
+        echo "$OUTPUT"
+        TPS=$(echo "$OUTPUT" | grep -oP 'tps = \K[\d.]+')
+        echo "PostgreSQL: read-write=$TPS TPS" >> "$S"
+
+    # ── 9. Ping (may fail on some runners) ───────────────────────
+    - name: "Network: Ping latency (github.com)"
+      continue-on-error: true
+      run: |
+        OUTPUT=$(ping -c 10 github.com)
+        echo "$OUTPUT"
+        AVG=$(echo "$OUTPUT" | grep "rtt\|round-trip" | grep -oP '[\d.]+/[\d.]+/[\d.]+' | cut -d/ -f2)
+        echo "Network: ping github.com=${AVG} ms" >> "$S"
+
+    - name: "Network: Ping latency (8.8.8.8)"
+      continue-on-error: true
+      run: |
+        OUTPUT=$(ping -c 10 8.8.8.8)
+        echo "$OUTPUT"
+        AVG=$(echo "$OUTPUT" | grep "rtt\|round-trip" | grep -oP '[\d.]+/[\d.]+/[\d.]+' | cut -d/ -f2)
+        echo "Network: ping 8.8.8.8=${AVG} ms" >> "$S"
+
+    # ── Write per-job summary + upload artifact ──────────────────
+    - name: "Write summary"
+      if: false
+      run: |
+        echo "## Benchmark Results: ${{ matrix.runs-on }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Benchmark | Result |" >> $GITHUB_STEP_SUMMARY
+        echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+        while IFS='=' read -r key value; do
+          [ -n "$key" ] && echo "| **$key** | $value |" >> $GITHUB_STEP_SUMMARY
+        done < "$S"
+
+    - name: "Upload benchmark results"
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: bench-${{ matrix.runs-on }}
+        path: /tmp/bench.csv
+
+  # ── Compare all runners ──────────────────────────────────────
+  compare:
+    name: "Compare Results"
+    needs: build
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+    - name: "Download all benchmark artifacts"
+      uses: actions/download-artifact@v4
+      with:
+        pattern: bench-*
+        path: /tmp/results
+
+    - name: "Build comparison table"
+      run: |
+        ruby -e '
+          require "pathname"
+
+          dir = Pathname("/tmp/results")
+          runners = dir.glob("bench-*").select(&:directory?).map { |d| d.basename.to_s.delete_prefix("bench-") }.sort
+
+          # Parse all CSV files: { runner => [[key, value], ...] }
+          data = {}
+          runners.each do |runner|
+            file = dir / "bench-#{runner}" / "bench.csv"
+            next unless file.exist?
+            data[runner] = file.readlines.filter_map { |line|
+              key, value = line.strip.split("=", 2)
+              [key, value] if key && !key.empty?
+            }
+          end
+
+          # Ordered unique keys (preserving first-seen order)
+          keys = data.values.flat_map { |rows| rows.map(&:first) }.uniq
+
+          # Build lookup: { [runner, key] => value }
+          lookup = {}
+          data.each do |runner, rows|
+            rows.each { |key, value| lookup[[runner, key]] = value }
+          end
+
+          # Filter to runners that have data
+          runners = runners.select { |r| data.key?(r) }
+
+          # Output markdown table
+          summary = ENV["GITHUB_STEP_SUMMARY"]
+          File.open(summary, "a") do |f|
+            f.puts "## Runner Comparison"
+            f.puts ""
+            f.puts "| Benchmark | #{runners.join(" | ")} |"
+            f.puts "|-----------|#{runners.map { "--------" }.join("|")}|"
+            keys.each do |key|
+              values = runners.map { |r| lookup[[r, key]] || "N/A" }
+              f.puts "| **#{key}** | #{values.join(" | ")} |"
+            end
+          end
+        '
