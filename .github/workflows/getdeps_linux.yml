@@ -11,204 +11,28 @@ jobs:
       fail-fast: false
       matrix:
         runs-on: [
-          ubuntu-22.04,
-          ubicloud-standard-2-ubuntu-2204,
-          ubicloud-premium-2-ubuntu-2204,
-          buildjet-2vcpu-ubuntu-2204,
           blacksmith-2vcpu-ubuntu-2204,
-          warp-ubuntu-2204-x64-2x
+          blacksmith-2vcpu-ubuntu-2204,
+          blacksmith-2vcpu-ubuntu-2204,
+          blacksmith-2vcpu-ubuntu-2204,
+          blacksmith-2vcpu-ubuntu-2204,
+          blacksmith-2vcpu-ubuntu-2204,
+          blacksmith-2vcpu-ubuntu-2204
         ]
     name: ${{matrix.runs-on}}
     runs-on: ${{matrix.runs-on}}
     continue-on-error: true
 
     steps:
-    - name: Install tools
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y smartmontools hdparm nvme-cli pciutils dmidecode util-linux lshw
-
-    # ── RAID Detection ───────────────────────────────────────────
-    - name: "RAID: /proc/mdstat (software RAID)"
+    - name: "Provider: AWS Metadata"
       continue-on-error: true
-      run: cat /proc/mdstat
+      run: curl -s --connect-timeout 2 http://169.254.169.254/latest/meta-data/
 
-    - name: "RAID: lsblk full details"
+    - name: "Provider: Cloud Init Info"
       continue-on-error: true
-      run: lsblk -o NAME,TYPE,SIZE,ROTA,DISC-MAX,MODEL,SERIAL,FSTYPE,MOUNTPOINT,PHY-SEC,LOG-SEC,SCHED
-
-    - name: "RAID: lspci RAID controllers"
-      continue-on-error: true
-      run: lspci -vv | grep -iA 10 "raid\|storage\|SATA\|NVMe\|SAS\|SCSI"
-
-    - name: "RAID: /sys/block rotational + scheduler"
+      run: cloud-init query --all 2>/dev/null || cat /etc/cloud/cloud.cfg.d/*.cfg 2>/dev/null || echo "No cloud-init info available"
+    
+    - name: "Provider Info"
       continue-on-error: true
       run: |
-        for dev in /sys/block/*/; do
-          name=$(basename "$dev")
-          echo "=== $name ==="
-          echo "  rotational: $(cat "$dev/queue/rotational" 2>/dev/null || echo N/A)"
-          echo "  scheduler: $(cat "$dev/queue/scheduler" 2>/dev/null || echo N/A)"
-          echo "  nr_requests: $(cat "$dev/queue/nr_requests" 2>/dev/null || echo N/A)"
-          echo "  max_hw_sectors_kb: $(cat "$dev/queue/max_hw_sectors_kb" 2>/dev/null || echo N/A)"
-          echo "  model: $(cat "$dev/device/model" 2>/dev/null || echo N/A)"
-          echo "  vendor: $(cat "$dev/device/vendor" 2>/dev/null || echo N/A)"
-        done
-
-    - name: "RAID: smartctl on all disks"
-      continue-on-error: true
-      run: |
-        for dev in $(lsblk -dnpo NAME); do
-          echo "=== smartctl $dev ==="
-          sudo smartctl -a "$dev" 2>&1 || true
-          echo ""
-        done
-
-    - name: "RAID: hdparm identity on all disks"
-      continue-on-error: true
-      run: |
-        for dev in $(lsblk -dnpo NAME); do
-          echo "=== hdparm $dev ==="
-          sudo hdparm -I "$dev" 2>&1 || true
-          echo ""
-        done
-
-    - name: "RAID: nvme list"
-      continue-on-error: true
-      run: sudo nvme list -o json 2>/dev/null || sudo nvme list 2>/dev/null || echo "No NVMe devices"
-
-    - name: "RAID: nvme id-ctrl (all NVMe devices)"
-      continue-on-error: true
-      run: |
-        for dev in /dev/nvme*; do
-          [ -c "$dev" ] || continue
-          echo "=== nvme id-ctrl $dev ==="
-          sudo nvme id-ctrl "$dev" 2>&1 || true
-          echo ""
-        done
-
-    - name: "RAID: fdisk -l"
-      continue-on-error: true
-      run: sudo fdisk -l
-
-    - name: "RAID: /proc/scsi/scsi"
-      continue-on-error: true
-      run: cat /proc/scsi/scsi
-
-    - name: "RAID: ls -la /dev/disk/"
-      continue-on-error: true
-      run: |
-        for dir in by-id by-path by-uuid by-label; do
-          echo "=== /dev/disk/$dir ==="
-          ls -la "/dev/disk/$dir" 2>/dev/null || echo "not present"
-          echo ""
-        done
-
-    - name: "RAID: /sys/class/block virtio info"
-      continue-on-error: true
-      run: |
-        for dev in /sys/block/*/; do
-          name=$(basename "$dev")
-          echo "=== $name ==="
-          readlink -f "$dev/device" 2>/dev/null || true
-          cat "$dev/device/uevent" 2>/dev/null || true
-          echo ""
-        done
-
-    # ── Hardware Serial Numbers ──────────────────────────────────
-    - name: "HW: dmidecode full"
-      continue-on-error: true
-      run: sudo dmidecode
-
-    - name: "HW: dmidecode system"
-      continue-on-error: true
-      run: sudo dmidecode -t system
-
-    - name: "HW: dmidecode baseboard"
-      continue-on-error: true
-      run: sudo dmidecode -t baseboard
-
-    - name: "HW: dmidecode chassis"
-      continue-on-error: true
-      run: sudo dmidecode -t chassis
-
-    - name: "HW: dmidecode bios"
-      continue-on-error: true
-      run: sudo dmidecode -t bios
-
-    - name: "HW: dmidecode processor"
-      continue-on-error: true
-      run: sudo dmidecode -t processor
-
-    - name: "HW: dmidecode memory"
-      continue-on-error: true
-      run: sudo dmidecode -t memory
-
-    - name: "HW: dmidecode cache"
-      continue-on-error: true
-      run: sudo dmidecode -t cache
-
-    - name: "HW: /sys/class/dmi/id"
-      continue-on-error: true
-      run: |
-        for f in /sys/class/dmi/id/*; do
-          [ -f "$f" ] || continue
-          name=$(basename "$f")
-          val=$(sudo cat "$f" 2>/dev/null || echo "permission denied")
-          echo "$name: $val"
-        done
-
-    - name: "HW: lshw full"
-      continue-on-error: true
-      run: sudo lshw
-
-    - name: "HW: lshw short"
-      continue-on-error: true
-      run: sudo lshw -short
-
-    - name: "HW: lshw disk class"
-      continue-on-error: true
-      run: sudo lshw -class disk -class storage
-
-    - name: "HW: lspci full"
-      continue-on-error: true
-      run: lspci -vvv
-
-    - name: "HW: lsblk with serials"
-      continue-on-error: true
-      run: lsblk -o NAME,SERIAL,MODEL,SIZE,TYPE,TRAN,REV,VENDOR
-
-    - name: "HW: /proc/cpuinfo"
-      continue-on-error: true
-      run: cat /proc/cpuinfo
-
-    - name: "HW: lscpu extended"
-      continue-on-error: true
-      run: lscpu --all --extended
-
-    - name: "HW: /proc/bus/pci"
-      continue-on-error: true
-      run: ls -laR /proc/bus/pci 2>/dev/null || echo "not available"
-
-    - name: "HW: SMBIOS entry point"
-      continue-on-error: true
-      run: sudo cat /sys/firmware/dmi/tables/smbios_entry_point 2>/dev/null | xxd | head -5 || echo "not available"
-
-    - name: "HW: ACPI tables list"
-      continue-on-error: true
-      run: ls -la /sys/firmware/acpi/tables/ 2>/dev/null || echo "not available"
-
-    - name: "HW: Hypervisor detection"
-      continue-on-error: true
-      run: |
-        echo "=== systemd-detect-virt ==="
-        systemd-detect-virt 2>/dev/null || echo "not available"
-        echo ""
-        echo "=== virt-what ==="
-        sudo apt-get install -y virt-what 2>/dev/null && sudo virt-what 2>/dev/null || echo "not available"
-        echo ""
-        echo "=== /proc/xen ==="
-        ls -la /proc/xen 2>/dev/null || echo "no xen"
-        echo ""
-        echo "=== dmesg hypervisor ==="
-        sudo dmesg | grep -i "hypervisor\|kvm\|qemu\|xen\|vmware\|hyper-v\|cloud" 2>/dev/null | head -20 || echo "not available"
+        curl -s ipinfo.io
