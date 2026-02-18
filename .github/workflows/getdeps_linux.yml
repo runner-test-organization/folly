@@ -3,7 +3,7 @@ name: linux
 on:
   push:
     branches:
-    - build-test
+    - build-test-hardware
 
 jobs:
   build:
@@ -11,18 +11,6 @@ jobs:
       fail-fast: false
       matrix:
         runs-on: [
-          # ubuntu-22.04, ubuntu-24.04,
-          # ubicloud-standard-2-ubuntu-2204, ubicloud-standard-2-ubuntu-2404,
-          # ubicloud-standard-2-arm-ubuntu-2204, ubicloud-standard-4-arm-ubuntu-2204,
-          # buildjet-2vcpu-ubuntu-2204, buildjet-2vcpu-ubuntu-2404,
-          # buildjet-2vcpu-ubuntu-2204-arm, buildjet-4vcpu-ubuntu-2204-arm,
-          # namespace-profile-x64-2x8,
-          # namespace-profile-arm64-2x8, namespace-profile-arm64-4x16,
-          # warp-ubuntu-latest-x64-2x, warp-ubuntu-2204-x64-2x,
-          # warp-ubuntu-2204-arm64-2x, warp-ubuntu-2204-arm64-4x,
-          # blacksmith-2vcpu-ubuntu-2204, blacksmith-4vcpu-ubuntu-2204,
-          # blacksmith-2vcpu-ubuntu-2204-arm, blacksmith-4vcpu-ubuntu-2204-arm,
-          # blacksmith-2vcpu-ubuntu-2204, blacksmith-2vcpu-ubuntu-2404
           ubuntu-22.04,
           ubicloud-standard-2-ubuntu-2204,
           ubicloud-premium-2-ubuntu-2204,
@@ -33,395 +21,194 @@ jobs:
     name: ${{matrix.runs-on}}
     runs-on: ${{matrix.runs-on}}
     continue-on-error: true
-    env:
-      S: /tmp/bench.csv
-      SUMMARY_FILE: /tmp/benchmark_summary.md
-
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: bench
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
 
     steps:
-    # ── 1. System Information ────────────────────────────────────
-    - name: "System Info"
-      run: |
-        CPU_MODEL=$(grep -m1 "model name" /proc/cpuinfo | cut -d: -f2 | xargs || echo "N/A")
-        ARCH=$(uname -m)
-        KERNEL=$(uname -r)
-        CORES=$(nproc)
-        RAM=$(free -h | awk '/Mem:/{print $2}')
-        DISK=$(df -h / | awk 'NR==2{print $2}')
-        DISK_FS=$(df -Th / | awk 'NR==2{print $2}')
-
-        echo "CPU Model=$CPU_MODEL" >> "$S"
-        echo "Architecture=$ARCH" >> "$S"
-        echo "Kernel=$KERNEL" >> "$S"
-        echo "Cores=$CORES" >> "$S"
-        echo "RAM=$RAM" >> "$S"
-        echo "Disk=$DISK ($DISK_FS)" >> "$S"
-
-        # Full info in logs
-        uname -a
-        lscpu
-        free -h
-        lsblk
-        df -Th
-
-    - name: "Docker Info"
-      run: |
-        docker version
-        docker info
-
-    # ── 2. Datacenter / Provider Detection ───────────────────────
-    - name: "Provider Info"
-      run: |
-        IPINFO=$(curl -s ipinfo.io)
-        ORG=$(echo "$IPINFO" | jq -r '.org // "N/A"')
-        CITY=$(echo "$IPINFO" | jq -r '.city // "N/A"')
-        REGION=$(echo "$IPINFO" | jq -r '.region // "N/A"')
-        COUNTRY=$(echo "$IPINFO" | jq -r '.country // "N/A"')
-        MANUFACTURER=$(sudo dmidecode -s system-manufacturer 2>/dev/null || echo "N/A")
-
-        echo "Provider=$ORG" >> "$S"
-        echo "Location=$CITY, $REGION, $COUNTRY" >> "$S"
-        echo "Manufacturer=$MANUFACTURER" >> "$S"
-
-    - name: "Provider: AWS Metadata"
-      continue-on-error: true
-      run: curl -s --connect-timeout 2 http://169.254.169.254/latest/meta-data/
-
-    - name: "Provider: Cloud Init Info"
-      continue-on-error: true
-      run: cloud-init query --all 2>/dev/null || cat /etc/cloud/cloud.cfg.d/*.cfg 2>/dev/null || echo "No cloud-init info available"
-
-    - name: "Provider: Environment Variables"
-      run: printenv | sort
-
-    - name: "Provider: PCI Devices"
-      continue-on-error: true
-      run: lspci -vv 2>/dev/null || echo "lspci not available"
-
-    - name: Dump GitHub Actions Context
-      uses: crazy-max/ghaction-dump-context@v2
-
-    # ── 3. Install Benchmark Tools ───────────────────────────────
-    - name: Install benchmark tools
+    - name: Install tools
       run: |
         sudo apt-get update
-        sudo apt-get install -y sysbench fio p7zip-full postgresql-client
-        mkdir -p /tmp/fio
+        sudo apt-get install -y smartmontools hdparm nvme-cli pciutils dmidecode util-linux lshw
 
-    # ── 4. CPU Performance ───────────────────────────────────────
-    - name: "CPU: sysbench single-thread"
-      run: |
-        OUTPUT=$(sysbench cpu --threads=1 --time=30 run)
-        echo "$OUTPUT"
-        EPS=$(echo "$OUTPUT" | grep "events per second" | awk '{print $NF}')
-        echo "CPU: sysbench 1-thread=$EPS events/sec" >> "$S"
+    # ── RAID Detection ───────────────────────────────────────────
+    - name: "RAID: /proc/mdstat (software RAID)"
+      continue-on-error: true
+      run: cat /proc/mdstat
 
-    - name: "CPU: sysbench multi-thread"
-      run: |
-        THREADS=$(nproc)
-        OUTPUT=$(sysbench cpu --threads=$THREADS --time=30 run)
-        echo "$OUTPUT"
-        EPS=$(echo "$OUTPUT" | grep "events per second" | awk '{print $NF}')
-        echo "CPU: sysbench ${THREADS}-thread=$EPS events/sec" >> "$S"
+    - name: "RAID: lsblk full details"
+      continue-on-error: true
+      run: lsblk -o NAME,TYPE,SIZE,ROTA,DISC-MAX,MODEL,SERIAL,FSTYPE,MOUNTPOINT,PHY-SEC,LOG-SEC,SCHED
 
-    - name: "CPU: openssl speed (crypto)"
-      run: |
-        OUTPUT=$(openssl speed -seconds 10 -multi $(nproc) sha256 aes-256-cbc 2>&1)
-        echo "$OUTPUT"
-        SHA256=$(echo "$OUTPUT" | grep "^sha256" | awk '{print $NF}')
-        AES=$(echo "$OUTPUT" | grep "^aes-256-cbc" | awk '{print $NF}')
-        echo "CPU: OpenSSL SHA256=${SHA256}k (16K block)" >> "$S"
-        echo "CPU: OpenSSL AES-256-CBC=${AES}k (16K block)" >> "$S"
+    - name: "RAID: lspci RAID controllers"
+      continue-on-error: true
+      run: lspci -vv | grep -iA 10 "raid\|storage\|SATA\|NVMe\|SAS\|SCSI"
 
-    - name: "CPU: 7-Zip compression benchmark"
-      run: |
-        OUTPUT=$(7z b)
-        echo "$OUTPUT"
-        TOT_LINE=$(echo "$OUTPUT" | grep "^Tot:")
-        TOTAL=$(echo "$TOT_LINE" | awk '{print $4}')
-        echo "CPU: 7-Zip=$TOTAL MIPS" >> "$S"
-
-    - name: "CPU: Install Passmark (x86 only)"
-      if: runner.arch == 'X64'
-      run: |
-        sudo apt-get install -y libncurses5 || true
-        wget -q "https://www.passmark.com/downloads/pt_linux_x64.zip" -O pt.zip
-        unzip pt.zip
-
-    - name: "CPU: Bypass libncurses5 (Ubuntu 24.04 x86)"
-      if: runner.arch == 'X64' && contains(matrix.runs-on, '2404')
-      run: |
-        sudo ln -s /usr/lib/x86_64-linux-gnu/libncurses.so.6 /usr/lib/x86_64-linux-gnu/libncurses.so.5
-        sudo ln -s /usr/lib/x86_64-linux-gnu/libtinfo.so.6 /usr/lib/x86_64-linux-gnu/libtinfo.so.5
-        sudo ldconfig
-
-    - name: "CPU: Run Passmark (x86 only)"
-      if: runner.arch == 'X64'
-      run: |
-        TERM=xterm ./PerformanceTest/PerformanceTest_Linux_x86-64 -p 2 -d 2 -i 2 -r 1
-        SCORE=$(grep "SUMM_CPU" results_cpu.yml | head -1 | awk '{print $2}')
-        SINGLE=$(grep "CPU_SINGLETHREAD" results_cpu.yml | head -1 | awk '{print $2}')
-        echo "CPU: Passmark CPU Mark=$SCORE" >> "$S"
-        echo "CPU: Passmark Single Thread=$SINGLE" >> "$S"
-
-    # ── 5. Memory Performance ────────────────────────────────────
-    - name: "Memory: sysbench read"
-      run: |
-        OUTPUT=$(sysbench memory --memory-oper=read --threads=$(nproc) --time=30 run)
-        echo "$OUTPUT"
-        THROUGHPUT=$(echo "$OUTPUT" | grep "transferred" | grep -oP '[\d.]+\s+MiB/sec' | head -1)
-        echo "Memory: read=$THROUGHPUT" >> "$S"
-
-    - name: "Memory: sysbench write"
-      run: |
-        OUTPUT=$(sysbench memory --memory-oper=write --threads=$(nproc) --time=30 run)
-        echo "$OUTPUT"
-        THROUGHPUT=$(echo "$OUTPUT" | grep "transferred" | grep -oP '[\d.]+\s+MiB/sec' | head -1)
-        echo "Memory: write=$THROUGHPUT" >> "$S"
-
-    # ── 6. I/O Performance ───────────────────────────────────────
-    - name: "I/O: fio sequential write"
-      run: |
-        OUTPUT=$(fio --name=seq-write --ioengine=libaio --direct=1 --bs=1M \
-          --size=1G --numjobs=1 --rw=write --group_reporting --runtime=30 --time_based \
-          --directory=/tmp/fio)
-        echo "$OUTPUT"
-        BW=$(echo "$OUTPUT" | grep "WRITE:" | grep -oP 'bw=\S+' | head -1)
-        echo "I/O: fio seq write=$BW" >> "$S"
-        rm -rf /tmp/fio && mkdir -p /tmp/fio
-
-    - name: "I/O: fio sequential read"
-      run: |
-        OUTPUT=$(fio --name=seq-read --ioengine=libaio --direct=1 --bs=1M \
-          --size=1G --numjobs=1 --rw=read --group_reporting --runtime=30 --time_based \
-          --directory=/tmp/fio)
-        echo "$OUTPUT"
-        BW=$(echo "$OUTPUT" | grep "READ:" | grep -oP 'bw=\S+' | head -1)
-        echo "I/O: fio seq read=$BW" >> "$S"
-        rm -rf /tmp/fio && mkdir -p /tmp/fio
-
-    - name: "I/O: fio random read 4K"
-      run: |
-        OUTPUT=$(fio --name=rand-read-4k --ioengine=libaio --direct=1 --bs=4k \
-          --size=1G --numjobs=4 --rw=randread --group_reporting --runtime=30 --time_based \
-          --directory=/tmp/fio)
-        echo "$OUTPUT"
-        BW=$(echo "$OUTPUT" | grep "READ:" | grep -oP 'bw=\S+' | head -1)
-        echo "I/O: fio rand read 4K=$BW" >> "$S"
-        rm -rf /tmp/fio && mkdir -p /tmp/fio
-
-    - name: "I/O: fio random write 4K"
-      run: |
-        OUTPUT=$(fio --name=rand-write-4k --ioengine=libaio --direct=1 --bs=4k \
-          --size=1G --numjobs=4 --rw=randwrite --group_reporting --runtime=30 --time_based \
-          --directory=/tmp/fio)
-        echo "$OUTPUT"
-        BW=$(echo "$OUTPUT" | grep "WRITE:" | grep -oP 'bw=\S+' | head -1)
-        echo "I/O: fio rand write 4K=$BW" >> "$S"
-        rm -rf /tmp/fio && mkdir -p /tmp/fio
-
-    - name: "I/O: fio mixed random read/write 4K"
-      run: |
-        OUTPUT=$(fio --name=rand-rw-4k --ioengine=libaio --direct=1 --bs=4k \
-          --size=1G --numjobs=4 --rw=randrw --rwmixread=70 --group_reporting --runtime=30 --time_based \
-          --directory=/tmp/fio)
-        echo "$OUTPUT"
-        READ_BW=$(echo "$OUTPUT" | grep "READ:" | grep -oP 'bw=\S+' | head -1)
-        WRITE_BW=$(echo "$OUTPUT" | grep "WRITE:" | grep -oP 'bw=\S+' | head -1)
-        echo "I/O: fio mixed r/w 4K read=$READ_BW" >> "$S"
-        echo "I/O: fio mixed r/w 4K write=$WRITE_BW" >> "$S"
-        rm -rf /tmp/fio && mkdir -p /tmp/fio
-
-    - name: "I/O: fio sequential write (iodepth=256)"
-      run: |
-        OUTPUT=$(fio --name=seq-write-deep --ioengine=libaio --direct=1 --bs=1M --iodepth=256 \
-          --size=1G --numjobs=1 --rw=write --group_reporting --runtime=30 --time_based \
-          --directory=/tmp/fio)
-        echo "$OUTPUT"
-        BW=$(echo "$OUTPUT" | grep "WRITE:" | grep -oP 'bw=\S+' | head -1)
-        echo "I/O: fio seq write (d256)=$BW" >> "$S"
-        rm -rf /tmp/fio && mkdir -p /tmp/fio
-
-    - name: "I/O: fio sequential read (iodepth=256)"
-      run: |
-        OUTPUT=$(fio --name=seq-read-deep --ioengine=libaio --direct=1 --bs=1M --iodepth=256 \
-          --size=1G --numjobs=1 --rw=read --group_reporting --runtime=30 --time_based \
-          --directory=/tmp/fio)
-        echo "$OUTPUT"
-        BW=$(echo "$OUTPUT" | grep "READ:" | grep -oP 'bw=\S+' | head -1)
-        echo "I/O: fio seq read (d256)=$BW" >> "$S"
-        rm -rf /tmp/fio && mkdir -p /tmp/fio
-
-    - name: "I/O: fio random read 4K (iodepth=256)"
-      run: |
-        OUTPUT=$(fio --name=rand-read-4k-deep --ioengine=libaio --direct=1 --bs=4k --iodepth=256 \
-          --size=1G --numjobs=4 --rw=randread --group_reporting --runtime=30 --time_based \
-          --directory=/tmp/fio)
-        echo "$OUTPUT"
-        BW=$(echo "$OUTPUT" | grep "READ:" | grep -oP 'bw=\S+' | head -1)
-        echo "I/O: fio rand read 4K (d256)=$BW" >> "$S"
-        rm -rf /tmp/fio && mkdir -p /tmp/fio
-
-    - name: "I/O: fio random write 4K (iodepth=256)"
-      run: |
-        OUTPUT=$(fio --name=rand-write-4k-deep --ioengine=libaio --direct=1 --bs=4k --iodepth=256 \
-          --size=1G --numjobs=4 --rw=randwrite --group_reporting --runtime=30 --time_based \
-          --directory=/tmp/fio)
-        echo "$OUTPUT"
-        BW=$(echo "$OUTPUT" | grep "WRITE:" | grep -oP 'bw=\S+' | head -1)
-        echo "I/O: fio rand write 4K (d256)=$BW" >> "$S"
-        rm -rf /tmp/fio && mkdir -p /tmp/fio
-
-    - name: "I/O: fio mixed random read/write 4K (iodepth=256)"
-      run: |
-        OUTPUT=$(fio --name=rand-rw-4k-deep --ioengine=libaio --direct=1 --bs=4k --iodepth=256 \
-          --size=1G --numjobs=4 --rw=randrw --rwmixread=70 --group_reporting --runtime=30 --time_based \
-          --directory=/tmp/fio)
-        echo "$OUTPUT"
-        READ_BW=$(echo "$OUTPUT" | grep "READ:" | grep -oP 'bw=\S+' | head -1)
-        WRITE_BW=$(echo "$OUTPUT" | grep "WRITE:" | grep -oP 'bw=\S+' | head -1)
-        echo "I/O: fio mixed r/w 4K read (d256)=$READ_BW" >> "$S"
-        echo "I/O: fio mixed r/w 4K write (d256)=$WRITE_BW" >> "$S"
-        rm -rf /tmp/fio
-
-    - name: "I/O: dd sequential write"
-      run: |
-        OUTPUT=$(dd if=/dev/zero of=./dd_test bs=1M count=1024 conv=fdatasync 2>&1)
-        echo "$OUTPUT"
-        SPEED=$(echo "$OUTPUT" | grep -oP '[\d.]+ [MGT]B/s' | tail -1)
-        echo "I/O: dd write=$SPEED" >> "$S"
-        rm -f ./dd_test
-
-    # ── 7. Network Performance ───────────────────────────────────
-    - name: "Network: Download speed test"
-      run: |
-        OUTPUT=$(curl -o /dev/null -w '%{speed_download} %{time_total} %{size_download}' -s \
-          https://releases.ubuntu.com/24.04/ubuntu-24.04.2-live-server-amd64.iso.zsync)
-        SPEED=$(echo "$OUTPUT" | awk '{printf "%.0f", $1}')
-        echo "Network: download=$SPEED bytes/sec" >> "$S"
-
-    # ── 8. PostgreSQL Performance ────────────────────────────────
-    - name: "PostgreSQL: Initialize pgbench (scale 50)"
-      run: |
-        PGPASSWORD=postgres pgbench -i -s 50 -h localhost -U postgres bench
-
-    - name: "PostgreSQL: Read-only benchmark"
-      run: |
-        OUTPUT=$(PGPASSWORD=postgres pgbench -h localhost -U postgres -S -c 10 -j $(nproc) -T 60 bench)
-        echo "$OUTPUT"
-        TPS=$(echo "$OUTPUT" | grep -oP 'tps = \K[\d.]+')
-        echo "PostgreSQL: read-only=$TPS TPS" >> "$S"
-
-    - name: "PostgreSQL: Read-write benchmark (TPC-B)"
-      run: |
-        OUTPUT=$(PGPASSWORD=postgres pgbench -h localhost -U postgres -c 10 -j $(nproc) -T 60 bench)
-        echo "$OUTPUT"
-        TPS=$(echo "$OUTPUT" | grep -oP 'tps = \K[\d.]+')
-        echo "PostgreSQL: read-write=$TPS TPS" >> "$S"
-
-    # ── 9. Ping (may fail on some runners) ───────────────────────
-    - name: "Network: Ping latency (github.com)"
+    - name: "RAID: /sys/block rotational + scheduler"
       continue-on-error: true
       run: |
-        OUTPUT=$(ping -c 10 github.com)
-        echo "$OUTPUT"
-        AVG=$(echo "$OUTPUT" | grep "rtt\|round-trip" | grep -oP '[\d.]+/[\d.]+/[\d.]+' | cut -d/ -f2)
-        echo "Network: ping github.com=${AVG} ms" >> "$S"
+        for dev in /sys/block/*/; do
+          name=$(basename "$dev")
+          echo "=== $name ==="
+          echo "  rotational: $(cat "$dev/queue/rotational" 2>/dev/null || echo N/A)"
+          echo "  scheduler: $(cat "$dev/queue/scheduler" 2>/dev/null || echo N/A)"
+          echo "  nr_requests: $(cat "$dev/queue/nr_requests" 2>/dev/null || echo N/A)"
+          echo "  max_hw_sectors_kb: $(cat "$dev/queue/max_hw_sectors_kb" 2>/dev/null || echo N/A)"
+          echo "  model: $(cat "$dev/device/model" 2>/dev/null || echo N/A)"
+          echo "  vendor: $(cat "$dev/device/vendor" 2>/dev/null || echo N/A)"
+        done
 
-    - name: "Network: Ping latency (8.8.8.8)"
+    - name: "RAID: smartctl on all disks"
       continue-on-error: true
       run: |
-        OUTPUT=$(ping -c 10 8.8.8.8)
-        echo "$OUTPUT"
-        AVG=$(echo "$OUTPUT" | grep "rtt\|round-trip" | grep -oP '[\d.]+/[\d.]+/[\d.]+' | cut -d/ -f2)
-        echo "Network: ping 8.8.8.8=${AVG} ms" >> "$S"
+        for dev in $(lsblk -dnpo NAME); do
+          echo "=== smartctl $dev ==="
+          sudo smartctl -a "$dev" 2>&1 || true
+          echo ""
+        done
 
-    # ── Write per-job summary + upload artifact ──────────────────
-    - name: "Write summary"
-      if: false
+    - name: "RAID: hdparm identity on all disks"
+      continue-on-error: true
       run: |
-        echo "## Benchmark Results: ${{ matrix.runs-on }}" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "| Benchmark | Result |" >> $GITHUB_STEP_SUMMARY
-        echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
-        while IFS='=' read -r key value; do
-          [ -n "$key" ] && echo "| **$key** | $value |" >> $GITHUB_STEP_SUMMARY
-        done < "$S"
+        for dev in $(lsblk -dnpo NAME); do
+          echo "=== hdparm $dev ==="
+          sudo hdparm -I "$dev" 2>&1 || true
+          echo ""
+        done
 
-    - name: "Upload benchmark results"
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: bench-${{ matrix.runs-on }}
-        path: /tmp/bench.csv
+    - name: "RAID: nvme list"
+      continue-on-error: true
+      run: sudo nvme list -o json 2>/dev/null || sudo nvme list 2>/dev/null || echo "No NVMe devices"
 
-  # ── Compare all runners ──────────────────────────────────────
-  compare:
-    name: "Compare Results"
-    needs: build
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-    - name: "Download all benchmark artifacts"
-      uses: actions/download-artifact@v4
-      with:
-        pattern: bench-*
-        path: /tmp/results
-
-    - name: "Build comparison table"
+    - name: "RAID: nvme id-ctrl (all NVMe devices)"
+      continue-on-error: true
       run: |
-        ruby -e '
-          require "pathname"
+        for dev in /dev/nvme*; do
+          [ -c "$dev" ] || continue
+          echo "=== nvme id-ctrl $dev ==="
+          sudo nvme id-ctrl "$dev" 2>&1 || true
+          echo ""
+        done
 
-          dir = Pathname("/tmp/results")
-          runners = dir.glob("bench-*").select(&:directory?).map { |d| d.basename.to_s.delete_prefix("bench-") }.sort
+    - name: "RAID: fdisk -l"
+      continue-on-error: true
+      run: sudo fdisk -l
 
-          # Parse all CSV files: { runner => [[key, value], ...] }
-          data = {}
-          runners.each do |runner|
-            file = dir / "bench-#{runner}" / "bench.csv"
-            next unless file.exist?
-            data[runner] = file.readlines.filter_map { |line|
-              key, value = line.strip.split("=", 2)
-              [key, value] if key && !key.empty?
-            }
-          end
+    - name: "RAID: /proc/scsi/scsi"
+      continue-on-error: true
+      run: cat /proc/scsi/scsi
 
-          # Ordered unique keys (preserving first-seen order)
-          keys = data.values.flat_map { |rows| rows.map(&:first) }.uniq
+    - name: "RAID: ls -la /dev/disk/"
+      continue-on-error: true
+      run: |
+        for dir in by-id by-path by-uuid by-label; do
+          echo "=== /dev/disk/$dir ==="
+          ls -la "/dev/disk/$dir" 2>/dev/null || echo "not present"
+          echo ""
+        done
 
-          # Build lookup: { [runner, key] => value }
-          lookup = {}
-          data.each do |runner, rows|
-            rows.each { |key, value| lookup[[runner, key]] = value }
-          end
+    - name: "RAID: /sys/class/block virtio info"
+      continue-on-error: true
+      run: |
+        for dev in /sys/block/*/; do
+          name=$(basename "$dev")
+          echo "=== $name ==="
+          readlink -f "$dev/device" 2>/dev/null || true
+          cat "$dev/device/uevent" 2>/dev/null || true
+          echo ""
+        done
 
-          # Filter to runners that have data
-          runners = runners.select { |r| data.key?(r) }
+    # ── Hardware Serial Numbers ──────────────────────────────────
+    - name: "HW: dmidecode full"
+      continue-on-error: true
+      run: sudo dmidecode
 
-          # Output markdown table
-          summary = ENV["GITHUB_STEP_SUMMARY"]
-          File.open(summary, "a") do |f|
-            f.puts "## Runner Comparison"
-            f.puts ""
-            f.puts "| Benchmark | #{runners.join(" | ")} |"
-            f.puts "|-----------|#{runners.map { "--------" }.join("|")}|"
-            keys.each do |key|
-              values = runners.map { |r| lookup[[r, key]] || "N/A" }
-              f.puts "| **#{key}** | #{values.join(" | ")} |"
-            end
-          end
-        '
+    - name: "HW: dmidecode system"
+      continue-on-error: true
+      run: sudo dmidecode -t system
+
+    - name: "HW: dmidecode baseboard"
+      continue-on-error: true
+      run: sudo dmidecode -t baseboard
+
+    - name: "HW: dmidecode chassis"
+      continue-on-error: true
+      run: sudo dmidecode -t chassis
+
+    - name: "HW: dmidecode bios"
+      continue-on-error: true
+      run: sudo dmidecode -t bios
+
+    - name: "HW: dmidecode processor"
+      continue-on-error: true
+      run: sudo dmidecode -t processor
+
+    - name: "HW: dmidecode memory"
+      continue-on-error: true
+      run: sudo dmidecode -t memory
+
+    - name: "HW: dmidecode cache"
+      continue-on-error: true
+      run: sudo dmidecode -t cache
+
+    - name: "HW: /sys/class/dmi/id"
+      continue-on-error: true
+      run: |
+        for f in /sys/class/dmi/id/*; do
+          [ -f "$f" ] || continue
+          name=$(basename "$f")
+          val=$(sudo cat "$f" 2>/dev/null || echo "permission denied")
+          echo "$name: $val"
+        done
+
+    - name: "HW: lshw full"
+      continue-on-error: true
+      run: sudo lshw
+
+    - name: "HW: lshw short"
+      continue-on-error: true
+      run: sudo lshw -short
+
+    - name: "HW: lshw disk class"
+      continue-on-error: true
+      run: sudo lshw -class disk -class storage
+
+    - name: "HW: lspci full"
+      continue-on-error: true
+      run: lspci -vvv
+
+    - name: "HW: lsblk with serials"
+      continue-on-error: true
+      run: lsblk -o NAME,SERIAL,MODEL,SIZE,TYPE,TRAN,REV,VENDOR
+
+    - name: "HW: /proc/cpuinfo"
+      continue-on-error: true
+      run: cat /proc/cpuinfo
+
+    - name: "HW: lscpu extended"
+      continue-on-error: true
+      run: lscpu --all --extended
+
+    - name: "HW: /proc/bus/pci"
+      continue-on-error: true
+      run: ls -laR /proc/bus/pci 2>/dev/null || echo "not available"
+
+    - name: "HW: SMBIOS entry point"
+      continue-on-error: true
+      run: sudo cat /sys/firmware/dmi/tables/smbios_entry_point 2>/dev/null | xxd | head -5 || echo "not available"
+
+    - name: "HW: ACPI tables list"
+      continue-on-error: true
+      run: ls -la /sys/firmware/acpi/tables/ 2>/dev/null || echo "not available"
+
+    - name: "HW: Hypervisor detection"
+      continue-on-error: true
+      run: |
+        echo "=== systemd-detect-virt ==="
+        systemd-detect-virt 2>/dev/null || echo "not available"
+        echo ""
+        echo "=== virt-what ==="
+        sudo apt-get install -y virt-what 2>/dev/null && sudo virt-what 2>/dev/null || echo "not available"
+        echo ""
+        echo "=== /proc/xen ==="
+        ls -la /proc/xen 2>/dev/null || echo "no xen"
+        echo ""
+        echo "=== dmesg hypervisor ==="
+        sudo dmesg | grep -i "hypervisor\|kvm\|qemu\|xen\|vmware\|hyper-v\|cloud" 2>/dev/null | head -20 || echo "not available"
