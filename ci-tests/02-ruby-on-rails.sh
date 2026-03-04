@@ -6,6 +6,9 @@ JOBS="$(nproc)"
 WORKDIR="${WORKDIR:-$HOME/ci-rails}"
 RAILS_REF="${RAILS_REF:-v8.0.1}"
 
+# ── Setup ────────────────────────────────────────────────────
+SETUP_START=$(date +%s)
+
 git clone https://github.com/rbenv/rbenv.git ~/.rbenv
 git clone https://github.com/rbenv/ruby-build.git ~/.rbenv/plugins/ruby-build
 
@@ -31,7 +34,17 @@ bundle config set jobs "${JOBS}"
 BUNDLE_GEMFILE=Gemfile bundle lock --update google-protobuf
 bundle install
 
+SETUP_DURATION=$(($(date +%s) - SETUP_START))
+
+# ── Test ─────────────────────────────────────────────────────
+TEST_START=$(date +%s)
+
 for fw in actionview actionmailbox actionmailer activejob; do
   echo "=== Testing $fw ==="
   (cd "$fw" && PARALLEL_WORKERS=$(nproc) bundle exec rake test)
 done
+
+TEST_DURATION=$(($(date +%s) - TEST_START))
+
+echo "SETUP_DURATION=${SETUP_DURATION}"
+echo "TEST_DURATION=${TEST_DURATION}"

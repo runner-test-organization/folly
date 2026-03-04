@@ -349,24 +349,30 @@ jobs:
     # ── 9. CI Test Workloads ────────────────────────────────────
     - name: "CI Test: Kubernetes (build + test)"
       run: |
-        START=$(date +%s)
-        bash ci-tests/01-k8s.sh
-        DURATION=$(($(date +%s) - START))
-        echo "CI Test: Kubernetes=${DURATION}s" >> "$S"
+        OUTPUT=$(bash ci-tests/01-k8s.sh)
+        echo "$OUTPUT"
+        SETUP=$(echo "$OUTPUT" | grep "^SETUP_DURATION=" | cut -d= -f2)
+        TEST=$(echo "$OUTPUT" | grep "^TEST_DURATION=" | cut -d= -f2)
+        echo "CI Test: K8s setup=${SETUP}s" >> "$S"
+        echo "CI Test: K8s test=${TEST}s" >> "$S"
 
     - name: "CI Test: Ruby on Rails (build + test)"
       run: |
-        START=$(date +%s)
-        bash ci-tests/02-ruby-on-rails.sh
-        DURATION=$(($(date +%s) - START))
-        echo "CI Test: Ruby on Rails=${DURATION}s" >> "$S"
+        OUTPUT=$(bash ci-tests/02-ruby-on-rails.sh)
+        echo "$OUTPUT"
+        SETUP=$(echo "$OUTPUT" | grep "^SETUP_DURATION=" | cut -d= -f2)
+        TEST=$(echo "$OUTPUT" | grep "^TEST_DURATION=" | cut -d= -f2)
+        echo "CI Test: Rails setup=${SETUP}s" >> "$S"
+        echo "CI Test: Rails test=${TEST}s" >> "$S"
 
     - name: "CI Test: Django (build + test)"
       run: |
-        START=$(date +%s)
-        bash ci-tests/03-django.sh
-        DURATION=$(($(date +%s) - START))
-        echo "CI Test: Django=${DURATION}s" >> "$S"
+        OUTPUT=$(bash ci-tests/03-django.sh)
+        echo "$OUTPUT"
+        SETUP=$(echo "$OUTPUT" | grep "^SETUP_DURATION=" | cut -d= -f2)
+        TEST=$(echo "$OUTPUT" | grep "^TEST_DURATION=" | cut -d= -f2)
+        echo "CI Test: Django setup=${SETUP}s" >> "$S"
+        echo "CI Test: Django test=${TEST}s" >> "$S"
 
     # ── 10. Ping (may fail on some runners) ──────────────────────
     - name: "Network: Ping latency (github.com)"

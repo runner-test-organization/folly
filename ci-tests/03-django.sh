@@ -7,6 +7,9 @@ JOBS="${JOBS:-$CPU_COUNT}"
 WORKDIR="${WORKDIR:-$HOME/ci-django}"
 DJANGO_REF="5.1.6"
 
+# ── Setup ────────────────────────────────────────────────────
+SETUP_START=$(date +%s)
+
 mkdir -p "${WORKDIR}"
 cd "${WORKDIR}"
 
@@ -22,4 +25,14 @@ python -m pip install -r tests/requirements/py3.txt
 sed -i 's/def test_strip_tags/def _skip_test_strip_tags/' tests/utils_tests/test_html.py
 sed -i 's/def test_pickle_errors_detection/def _skip_test_pickle_errors_detection/' tests/test_runner/test_parallel.py
 
+SETUP_DURATION=$(($(date +%s) - SETUP_START))
+
+# ── Test ─────────────────────────────────────────────────────
+TEST_START=$(date +%s)
+
 python tests/runtests.py --parallel $(nproc) --settings=test_sqlite
+
+TEST_DURATION=$(($(date +%s) - TEST_START))
+
+echo "SETUP_DURATION=${SETUP_DURATION}"
+echo "TEST_DURATION=${TEST_DURATION}"
