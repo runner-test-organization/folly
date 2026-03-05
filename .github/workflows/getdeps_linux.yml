@@ -23,12 +23,12 @@ jobs:
           # blacksmith-2vcpu-ubuntu-2204, blacksmith-4vcpu-ubuntu-2204,
           # blacksmith-2vcpu-ubuntu-2204-arm, blacksmith-4vcpu-ubuntu-2204-arm,
           # blacksmith-2vcpu-ubuntu-2204, blacksmith-2vcpu-ubuntu-2404
-          # ubuntu-22.04,
+          ubuntu-22.04,
           ubicloud-standard-2-ubuntu-2204,
-          # ubicloud-premium-2-ubuntu-2204,
-          # buildjet-2vcpu-ubuntu-2204,
-          # blacksmith-2vcpu-ubuntu-2204,
-          # warp-ubuntu-2204-x64-2x
+          ubicloud-premium-2-ubuntu-2204,
+          buildjet-2vcpu-ubuntu-2204,
+          blacksmith-2vcpu-ubuntu-2204,
+          warp-ubuntu-2204-x64-2x
         ]
     name: ${{matrix.runs-on}}
     runs-on: ${{matrix.runs-on}}
